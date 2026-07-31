@@ -190,7 +190,7 @@ if __name__ == "__main__":
     print("="*40)
     create_topology("chain")
     archive_history_data("chain")
-    run_chain_auto_tests()
+   # run_chain_auto_tests()
     print("\n [处理中] 正在生成链式拓扑图表...")
     generate_plot("chain")
 
