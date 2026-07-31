@@ -1,0 +1,575 @@
+==============================
+实验时间:2026-07-29 16:48:51
+拓扑类型:链式拓扑
+链路:test_a-->test_b-->test_c
+
+第一段链路(test_a-->test_b)损伤参数:
+延迟(delay):0.0 ms
+抖动(jitter):0 ms
+丢包(loss):0.0%
+带宽(bandwidth):1000 Mbps
+
+第二段链路(test_b-->test_c)损伤参数:
+延迟(delay):0.0 ms
+抖动(jitter):0 ms
+丢包(loss):0.0%
+带宽(bandwidth):0 Mbps
+
+端到端测试结果(test_a-->test_c):
+平均RTT:0.105 ms
+实际丢包率:0.0%
+吞吐量:550.3 Mbps
+==============================
+
+==============================
+实验时间:2026-07-29 16:50:03
+拓扑类型:链式拓扑
+链路:test_a-->test_b-->test_c
+
+第一段链路(test_a-->test_b)损伤参数:
+延迟(delay):3.0 ms
+抖动(jitter):0 ms
+丢包(loss):0.0%
+带宽(bandwidth):1000 Mbps
+
+第二段链路(test_b-->test_c)损伤参数:
+延迟(delay):7.0 ms
+抖动(jitter):0 ms
+丢包(loss):0.0%
+带宽(bandwidth):0 Mbps
+
+端到端测试结果(test_a-->test_c):
+平均RTT:10.967 ms
+实际丢包率:0.0%
+吞吐量:526.685 Mbps
+==============================
+
+==============================
+实验时间:2026-07-29 16:51:15
+拓扑类型:链式拓扑
+链路:test_a-->test_b-->test_c
+
+第一段链路(test_a-->test_b)损伤参数:
+延迟(delay):15.0 ms
+抖动(jitter):0 ms
+丢包(loss):0.0%
+带宽(bandwidth):1000 Mbps
+
+第二段链路(test_b-->test_c)损伤参数:
+延迟(delay):35.0 ms
+抖动(jitter):0 ms
+丢包(loss):0.0%
+带宽(bandwidth):0 Mbps
+
+端到端测试结果(test_a-->test_c):
+平均RTT:51.076 ms
+实际丢包率:0.0%
+吞吐量:201.752 Mbps
+==============================
+
+==============================
+实验时间:2026-07-29 16:52:31
+拓扑类型:链式拓扑
+链路:test_a-->test_b-->test_c
+
+第一段链路(test_a-->test_b)损伤参数:
+延迟(delay):30.0 ms
+抖动(jitter):0 ms
+丢包(loss):0.0%
+带宽(bandwidth):1000 Mbps
+
+第二段链路(test_b-->test_c)损伤参数:
+延迟(delay):70.0 ms
+抖动(jitter):0 ms
+丢包(loss):0.0%
+带宽(bandwidth):0 Mbps
+
+端到端测试结果(test_a-->test_c):
+平均RTT:101.084 ms
+实际丢包率:0.0%
+吞吐量:98.675 Mbps
+==============================
+
+==============================
+实验时间:2026-07-29 16:53:47
+拓扑类型:链式拓扑
+链路:test_a-->test_b-->test_c
+
+第一段链路(test_a-->test_b)损伤参数:
+延迟(delay):60.0 ms
+抖动(jitter):0 ms
+丢包(loss):0.0%
+带宽(bandwidth):1000 Mbps
+
+第二段链路(test_b-->test_c)损伤参数:
+延迟(delay):140.0 ms
+抖动(jitter):0 ms
+丢包(loss):0.0%
+带宽(bandwidth):0 Mbps
+
+端到端测试结果(test_a-->test_c):
+平均RTT:200.916 ms
+实际丢包率:0.0%
+吞吐量:49.577 Mbps
+==============================
+
+==============================
+实验时间:2026-07-29 16:54:59
+拓扑类型:链式拓扑
+链路:test_a-->test_b-->test_c
+
+第一段链路(test_a-->test_b)损伤参数:
+延迟(delay):0.0 ms
+抖动(jitter):0 ms
+丢包(loss):0.3%
+带宽(bandwidth):1000 Mbps
+
+第二段链路(test_b-->test_c)损伤参数:
+延迟(delay):0.0 ms
+抖动(jitter):0 ms
+丢包(loss):0.7%
+带宽(bandwidth):0 Mbps
+
+端到端测试结果(test_a-->test_c):
+平均RTT:0.1 ms
+实际丢包率:1.1%
+吞吐量:501.377 Mbps
+==============================
+
+==============================
+实验时间:2026-07-29 16:56:11
+拓扑类型:链式拓扑
+链路:test_a-->test_b-->test_c
+
+第一段链路(test_a-->test_b)损伤参数:
+延迟(delay):0.0 ms
+抖动(jitter):0 ms
+丢包(loss):0.9%
+带宽(bandwidth):1000 Mbps
+
+第二段链路(test_b-->test_c)损伤参数:
+延迟(delay):0.0 ms
+抖动(jitter):0 ms
+丢包(loss):2.1%
+带宽(bandwidth):0 Mbps
+
+端到端测试结果(test_a-->test_c):
+平均RTT:0.101 ms
+实际丢包率:2.8%
+吞吐量:364.916 Mbps
+==============================
+
+==============================
+实验时间:2026-07-29 16:57:24
+拓扑类型:链式拓扑
+链路:test_a-->test_b-->test_c
+
+第一段链路(test_a-->test_b)损伤参数:
+延迟(delay):0.0 ms
+抖动(jitter):0 ms
+丢包(loss):1.5%
+带宽(bandwidth):1000 Mbps
+
+第二段链路(test_b-->test_c)损伤参数:
+延迟(delay):0.0 ms
+抖动(jitter):0 ms
+丢包(loss):3.5%
+带宽(bandwidth):0 Mbps
+
+端到端测试结果(test_a-->test_c):
+平均RTT:0.115 ms
+实际丢包率:4.7%
+吞吐量:97.525 Mbps
+==============================
+
+==============================
+实验时间:2026-07-29 16:58:36
+拓扑类型:链式拓扑
+链路:test_a-->test_b-->test_c
+
+第一段链路(test_a-->test_b)损伤参数:
+延迟(delay):0.0 ms
+抖动(jitter):0 ms
+丢包(loss):3.0%
+带宽(bandwidth):1000 Mbps
+
+第二段链路(test_b-->test_c)损伤参数:
+延迟(delay):0.0 ms
+抖动(jitter):0 ms
+丢包(loss):7.0%
+带宽(bandwidth):0 Mbps
+
+端到端测试结果(test_a-->test_c):
+平均RTT:0.114 ms
+实际丢包率:9.9%
+吞吐量:5.734 Mbps
+==============================
+
+==============================
+实验时间:2026-07-29 16:59:48
+拓扑类型:链式拓扑
+链路:test_a-->test_b-->test_c
+
+第一段链路(test_a-->test_b)损伤参数:
+延迟(delay):3.0 ms
+抖动(jitter):0 ms
+丢包(loss):0.3%
+带宽(bandwidth):1000 Mbps
+
+第二段链路(test_b-->test_c)损伤参数:
+延迟(delay):7.0 ms
+抖动(jitter):0 ms
+丢包(loss):0.7%
+带宽(bandwidth):0 Mbps
+
+端到端测试结果(test_a-->test_c):
+平均RTT:11.034 ms
+实际丢包率:0.6%
+吞吐量:15.157 Mbps
+==============================
+
+==============================
+实验时间:2026-07-29 17:01:00
+拓扑类型:链式拓扑
+链路:test_a-->test_b-->test_c
+
+第一段链路(test_a-->test_b)损伤参数:
+延迟(delay):3.0 ms
+抖动(jitter):0 ms
+丢包(loss):0.9%
+带宽(bandwidth):1000 Mbps
+
+第二段链路(test_b-->test_c)损伤参数:
+延迟(delay):7.0 ms
+抖动(jitter):0 ms
+丢包(loss):2.1%
+带宽(bandwidth):0 Mbps
+
+端到端测试结果(test_a-->test_c):
+平均RTT:10.923 ms
+实际丢包率:3.7%
+吞吐量:8.744 Mbps
+==============================
+
+==============================
+实验时间:2026-07-29 17:02:12
+拓扑类型:链式拓扑
+链路:test_a-->test_b-->test_c
+
+第一段链路(test_a-->test_b)损伤参数:
+延迟(delay):3.0 ms
+抖动(jitter):0 ms
+丢包(loss):1.5%
+带宽(bandwidth):1000 Mbps
+
+第二段链路(test_b-->test_c)损伤参数:
+延迟(delay):7.0 ms
+抖动(jitter):0 ms
+丢包(loss):3.5%
+带宽(bandwidth):0 Mbps
+
+端到端测试结果(test_a-->test_c):
+平均RTT:10.895 ms
+实际丢包率:5.7%
+吞吐量:5.275 Mbps
+==============================
+
+==============================
+实验时间:2026-07-29 17:03:24
+拓扑类型:链式拓扑
+链路:test_a-->test_b-->test_c
+
+第一段链路(test_a-->test_b)损伤参数:
+延迟(delay):3.0 ms
+抖动(jitter):0 ms
+丢包(loss):3.0%
+带宽(bandwidth):1000 Mbps
+
+第二段链路(test_b-->test_c)损伤参数:
+延迟(delay):7.0 ms
+抖动(jitter):0 ms
+丢包(loss):7.0%
+带宽(bandwidth):0 Mbps
+
+端到端测试结果(test_a-->test_c):
+平均RTT:10.904 ms
+实际丢包率:10.4%
+吞吐量:2.755 Mbps
+==============================
+
+==============================
+实验时间:2026-07-29 17:04:37
+拓扑类型:链式拓扑
+链路:test_a-->test_b-->test_c
+
+第一段链路(test_a-->test_b)损伤参数:
+延迟(delay):15.0 ms
+抖动(jitter):0 ms
+丢包(loss):0.3%
+带宽(bandwidth):1000 Mbps
+
+第二段链路(test_b-->test_c)损伤参数:
+延迟(delay):35.0 ms
+抖动(jitter):0 ms
+丢包(loss):0.7%
+带宽(bandwidth):0 Mbps
+
+端到端测试结果(test_a-->test_c):
+平均RTT:50.901 ms
+实际丢包率:1.4%
+吞吐量:3.837 Mbps
+==============================
+
+==============================
+实验时间:2026-07-29 17:05:49
+拓扑类型:链式拓扑
+链路:test_a-->test_b-->test_c
+
+第一段链路(test_a-->test_b)损伤参数:
+延迟(delay):15.0 ms
+抖动(jitter):0 ms
+丢包(loss):0.9%
+带宽(bandwidth):1000 Mbps
+
+第二段链路(test_b-->test_c)损伤参数:
+延迟(delay):35.0 ms
+抖动(jitter):0 ms
+丢包(loss):2.1%
+带宽(bandwidth):0 Mbps
+
+端到端测试结果(test_a-->test_c):
+平均RTT:50.902 ms
+实际丢包率:1.6%
+吞吐量:2.056 Mbps
+==============================
+
+==============================
+实验时间:2026-07-29 17:07:03
+拓扑类型:链式拓扑
+链路:test_a-->test_b-->test_c
+
+第一段链路(test_a-->test_b)损伤参数:
+延迟(delay):15.0 ms
+抖动(jitter):0 ms
+丢包(loss):1.5%
+带宽(bandwidth):1000 Mbps
+
+第二段链路(test_b-->test_c)损伤参数:
+延迟(delay):35.0 ms
+抖动(jitter):0 ms
+丢包(loss):3.5%
+带宽(bandwidth):0 Mbps
+
+端到端测试结果(test_a-->test_c):
+平均RTT:50.913 ms
+实际丢包率:3.8%
+吞吐量:1.428 Mbps
+==============================
+
+==============================
+实验时间:2026-07-29 17:08:17
+拓扑类型:链式拓扑
+链路:test_a-->test_b-->test_c
+
+第一段链路(test_a-->test_b)损伤参数:
+延迟(delay):15.0 ms
+抖动(jitter):0 ms
+丢包(loss):3.0%
+带宽(bandwidth):1000 Mbps
+
+第二段链路(test_b-->test_c)损伤参数:
+延迟(delay):35.0 ms
+抖动(jitter):0 ms
+丢包(loss):7.0%
+带宽(bandwidth):0 Mbps
+
+端到端测试结果(test_a-->test_c):
+平均RTT:50.916 ms
+实际丢包率:8.5%
+吞吐量:0.579 Mbps
+==============================
+
+==============================
+实验时间:2026-07-29 17:09:33
+拓扑类型:链式拓扑
+链路:test_a-->test_b-->test_c
+
+第一段链路(test_a-->test_b)损伤参数:
+延迟(delay):30.0 ms
+抖动(jitter):0 ms
+丢包(loss):0.3%
+带宽(bandwidth):1000 Mbps
+
+第二段链路(test_b-->test_c)损伤参数:
+延迟(delay):70.0 ms
+抖动(jitter):0 ms
+丢包(loss):0.7%
+带宽(bandwidth):0 Mbps
+
+端到端测试结果(test_a-->test_c):
+平均RTT:101.024 ms
+实际丢包率:0.7%
+吞吐量:2.344 Mbps
+==============================
+
+==============================
+实验时间:2026-07-29 17:10:50
+拓扑类型:链式拓扑
+链路:test_a-->test_b-->test_c
+
+第一段链路(test_a-->test_b)损伤参数:
+延迟(delay):30.0 ms
+抖动(jitter):0 ms
+丢包(loss):0.9%
+带宽(bandwidth):1000 Mbps
+
+第二段链路(test_b-->test_c)损伤参数:
+延迟(delay):70.0 ms
+抖动(jitter):0 ms
+丢包(loss):2.1%
+带宽(bandwidth):0 Mbps
+
+端到端测试结果(test_a-->test_c):
+平均RTT:101.018 ms
+实际丢包率:2.7%
+吞吐量:1.296 Mbps
+==============================
+
+==============================
+实验时间:2026-07-29 17:12:06
+拓扑类型:链式拓扑
+链路:test_a-->test_b-->test_c
+
+第一段链路(test_a-->test_b)损伤参数:
+延迟(delay):30.0 ms
+抖动(jitter):0 ms
+丢包(loss):1.5%
+带宽(bandwidth):1000 Mbps
+
+第二段链路(test_b-->test_c)损伤参数:
+延迟(delay):70.0 ms
+抖动(jitter):0 ms
+丢包(loss):3.5%
+带宽(bandwidth):0 Mbps
+
+端到端测试结果(test_a-->test_c):
+平均RTT:101.039 ms
+实际丢包率:5.1%
+吞吐量:0.753 Mbps
+==============================
+
+==============================
+实验时间:2026-07-29 17:13:25
+拓扑类型:链式拓扑
+链路:test_a-->test_b-->test_c
+
+第一段链路(test_a-->test_b)损伤参数:
+延迟(delay):30.0 ms
+抖动(jitter):0 ms
+丢包(loss):3.0%
+带宽(bandwidth):1000 Mbps
+
+第二段链路(test_b-->test_c)损伤参数:
+延迟(delay):70.0 ms
+抖动(jitter):0 ms
+丢包(loss):7.0%
+带宽(bandwidth):0 Mbps
+
+端到端测试结果(test_a-->test_c):
+平均RTT:101.049 ms
+实际丢包率:10.0%
+吞吐量:0.29 Mbps
+==============================
+
+==============================
+实验时间:2026-07-29 17:14:41
+拓扑类型:链式拓扑
+链路:test_a-->test_b-->test_c
+
+第一段链路(test_a-->test_b)损伤参数:
+延迟(delay):60.0 ms
+抖动(jitter):0 ms
+丢包(loss):0.3%
+带宽(bandwidth):1000 Mbps
+
+第二段链路(test_b-->test_c)损伤参数:
+延迟(delay):140.0 ms
+抖动(jitter):0 ms
+丢包(loss):0.7%
+带宽(bandwidth):0 Mbps
+
+端到端测试结果(test_a-->test_c):
+平均RTT:201.0 ms
+实际丢包率:1.1%
+吞吐量:1.39 Mbps
+==============================
+
+==============================
+实验时间:2026-07-29 17:15:58
+拓扑类型:链式拓扑
+链路:test_a-->test_b-->test_c
+
+第一段链路(test_a-->test_b)损伤参数:
+延迟(delay):60.0 ms
+抖动(jitter):0 ms
+丢包(loss):0.9%
+带宽(bandwidth):1000 Mbps
+
+第二段链路(test_b-->test_c)损伤参数:
+延迟(delay):140.0 ms
+抖动(jitter):0 ms
+丢包(loss):2.1%
+带宽(bandwidth):0 Mbps
+
+端到端测试结果(test_a-->test_c):
+平均RTT:200.969 ms
+实际丢包率:2.7%
+吞吐量:0.536 Mbps
+==============================
+
+==============================
+实验时间:2026-07-29 17:17:15
+拓扑类型:链式拓扑
+链路:test_a-->test_b-->test_c
+
+第一段链路(test_a-->test_b)损伤参数:
+延迟(delay):60.0 ms
+抖动(jitter):0 ms
+丢包(loss):1.5%
+带宽(bandwidth):1000 Mbps
+
+第二段链路(test_b-->test_c)损伤参数:
+延迟(delay):140.0 ms
+抖动(jitter):0 ms
+丢包(loss):3.5%
+带宽(bandwidth):0 Mbps
+
+端到端测试结果(test_a-->test_c):
+平均RTT:200.963 ms
+实际丢包率:4.1%
+吞吐量:0.262 Mbps
+==============================
+
+==============================
+实验时间:2026-07-29 17:18:36
+拓扑类型:链式拓扑
+链路:test_a-->test_b-->test_c
+
+第一段链路(test_a-->test_b)损伤参数:
+延迟(delay):60.0 ms
+抖动(jitter):0 ms
+丢包(loss):3.0%
+带宽(bandwidth):1000 Mbps
+
+第二段链路(test_b-->test_c)损伤参数:
+延迟(delay):140.0 ms
+抖动(jitter):0 ms
+丢包(loss):7.0%
+带宽(bandwidth):0 Mbps
+
+端到端测试结果(test_a-->test_c):
+平均RTT:200.982 ms
+实际丢包率:10.3%
+吞吐量:0.191 Mbps
+==============================
+
