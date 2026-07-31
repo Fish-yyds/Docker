@@ -21,52 +21,19 @@ def _run(args, timeout):
     )
 
 
-def ping_test(target, attempts=2):
-    """
-    执行 Ping 测试，返回平均 RTT 和实际丢包率。
-    默认发送 1000 个包，发包间隔 0.05 秒，总耗时约 50 秒。
-    
-    :param target: 目标容器名称或 IP 地址
-    :param attempts: 失败重试次数
-    :return: (avg_rtt, real_loss)
-    """
-    print(f" 正在执行 Ping 测试 (目标: {target}，约需 50 秒)...")
-    
-    for attempt in range(1, attempts + 1):
-        try:
-            # 核心参数: -c 1000 (发包量), -i 0.05 (发包间隔), -W 2 (超时时间)
-            # 总耗时约 50 秒，subprocess 超时设为 120 秒留出余量
-            result = _run(
-                ["docker", "exec", "test_a", "ping", "-c", "10000", "-i", "0.01", "-W", "2", target], 
-                timeout=2000
-            )
-        except subprocess.TimeoutExpired:
-            result = None
-            
-        if result and result.stdout:
-            # 使用正则精准提取丢包率和平均 RTT
-            loss_match = re.search(r"([\d.]+)% packet loss", result.stdout)
-            rtt_match = re.search(r"=\s*[\d.]+/([\d.]+)/[\d.]+/[\d.]+", result.stdout)
-            
-            if loss_match:
-                loss = float(loss_match.group(1))
-                rtt = float(rtt_match.group(1)) if rtt_match else 0.0
-                print(f"  └─ Ping 测量完成: RTT = {rtt} ms, 丢包率 = {loss}%")
-                return rtt, loss
-                
-        print(f" Ping 测试第 {attempt}/{attempts} 次失败，准备重试...")
-        time.sleep(1)
-        
-    print(" Ping 测试最终失败，返回默认值 (0.0 ms, 100.0%)。")
-    return 0.0, 100.0
-
-
 def _server_name(target):
     """
     [内部函数] 将目标 IP 或名称映射为底层服务端容器名。
-    链式拓扑中，172.22.0.3 对应的就是 test_c 容器。
+    精准匹配星型、链式以及网状拓扑的所有可能目标 IP。
     """
-    return "test_c" if target in ("test_c", "172.22.0.3") else target
+    ip_map = {
+        "172.22.0.3": "test_c",  # 链式拓扑 test_c IP
+        "172.25.0.3": "test_b",  # 网状拓扑 net_mesh_ab 中的 test_b IP
+        "172.26.0.3": "test_c",  # 网状拓扑 net_mesh_bc 中的 test_c IP
+        "172.27.0.2": "test_c",  # 网状拓扑 net_mesh_ac 中的 test_c IP
+        "172.27.0.3": "test_c",
+    }
+    return ip_map.get(target, target)
 
 
 def _restart_iperf_server(target):
@@ -88,24 +55,61 @@ def _restart_iperf_server(target):
     time.sleep(1)
 
 
-def iperf_test(target, attempts=2):
+def ping_test(target, source="test_a", attempts=2):
+    """
+    执行 Ping 测试，返回平均 RTT 和实际丢包率。
+    
+    :param target: 目标容器名称或 IP 地址
+    :param source: 发起 Ping 的源容器名称，默认 test_a
+    :param attempts: 失败重试次数
+    :return: (avg_rtt, real_loss)
+    """
+    print(f" [处理中] 正在执行 Ping 测试 (源: {source} -> 目标: {target})...")
+    
+    for attempt in range(1, attempts + 1):
+        try:
+            result = _run(
+                ["docker", "exec", source, "ping", "-c", "10000", "-i", "0.01", "-W", "2", target], 
+                timeout=140
+            )
+        except subprocess.TimeoutExpired:
+            result = None
+            
+        if result and result.stdout:
+            # 使用正则精准提取丢包率和平均 RTT
+            loss_match = re.search(r"([\d.]+)% packet loss", result.stdout)
+            rtt_match = re.search(r"=\s*[\d.]+/([\d.]+)/[\d.]+/[\d.]+", result.stdout)
+            
+            if loss_match:
+                loss = float(loss_match.group(1))
+                rtt = float(rtt_match.group(1)) if rtt_match else 0.0
+                print(f"  └─ Ping 测量完成: RTT = {rtt} ms, 丢包率 = {loss}%")
+                return rtt, loss
+                
+        print(f" [警告] Ping 测试第 {attempt}/{attempts} 次失败，准备重试...")
+        time.sleep(1)
+        
+    print(" [失败] Ping 测试最终失败，返回默认值 (0.0 ms, 100.0%)。")
+    return 0.0, 100.0
+
+
+def iperf_test(target, source="test_a", attempts=2):
     """
     执行 Iperf3 吞吐量测试，解析 JSON 结果并返回带宽测量值 (Mbps)。
     
     :param target: 目标容器名称或 IP 地址
+    :param source: 发起 Iperf3 的源容器名称，默认 test_a
     :param attempts: 失败重试次数
     :return: throughput (Mbps)
     """
-    print(f" 正在执行 Iperf3 吞吐量测试 (目标: {target}，约需 15 秒)...")
+    print(f" [处理中] 正在执行 Iperf3 吞吐量测试 (源: {source} -> 目标: {target})...")
     
     for attempt in range(1, attempts + 1):
         _restart_iperf_server(target)
         
         try:
-            # -t 15: 测试 15 秒
-            # --omit 3: 忽略前 3 秒的 TCP 慢启动预热数据，使结果更准确
             result = _run([
-                "docker", "exec", "test_a", "iperf3", "-c", target,
+                "docker", "exec", source, "iperf3", "-c", target,
                 "-t", "15", "--omit", "3", "--json",
             ], timeout=35)
             
@@ -119,11 +123,11 @@ def iperf_test(target, attempts=2):
                 return throughput_rounded
                 
         except subprocess.TimeoutExpired:
-            print(f" Iperf3 测试执行超时 (第 {attempt}/{attempts} 次)。")
+            print(f" [警告] Iperf3 测试执行超时 (第 {attempt}/{attempts} 次)。")
         except (json.JSONDecodeError, KeyError, TypeError):
-            print(f" Iperf3 结果解析失败 (第 {attempt}/{attempts} 次)，可能网络完全断开导致无法生成 JSON。")
+            print(f" [警告] Iperf3 结果解析失败 (第 {attempt}/{attempts} 次)，可能网络断开未生成 JSON。")
             
         time.sleep(2)
         
-    print(" Iperf3 测试最终失败，返回默认吞吐量 (0.0 Mbps)。")
+    print(" [失败] Iperf3 测试最终失败，返回默认吞吐量 (0.0 Mbps)。")
     return 0.0

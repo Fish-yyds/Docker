@@ -37,7 +37,7 @@ def set_damage(node, interface, delay=0, jitter=0, loss=0, bandwidth=0):
         raise ValueError("配置抖动时必须同时配置大于 0 的时延")
 
     print(
-        f"配置网络损伤: {node}:{interface}, "
+        f" [处理中] 配置网络损伤: {node}:{interface}, "
         f"delay={delay}ms, jitter={jitter}ms, loss={loss}%, bandwidth={bandwidth}Mbps"
     )
 
@@ -61,10 +61,11 @@ def set_damage(node, interface, delay=0, jitter=0, loss=0, bandwidth=0):
     # 根据是否限制带宽和损伤参数，决定执行的 tc 命令序列
     if bandwidth > 0:
         # 1. 限制带宽：使用 TBF (Token Bucket Filter) 算法配置 root 节点
+        # 【核心修复】：将 burst 从 32kbit 提升至 1m，防止高带宽(如 500M/1000M)下的微突发引发异常丢包
         _docker_exec(
             node, "tc", "qdisc", "add", "dev", interface,
             "root", "handle", "1:", "tbf", "rate", f"{bandwidth}mbit",
-            "burst", "32kbit", "latency", "400ms",
+            "burst", "1m", "latency", "400ms",
         )
         
         # 2. 如果存在其他损伤，将其串联在 TBF 的子节点下
@@ -86,5 +87,5 @@ def check_tc(node, interface):
     查看并打印指定容器网卡的 tc 规则配置。
     """
     result = _docker_exec(node, "tc", "qdisc", "show", "dev", interface)
-    print(f"\n{node}:{interface} 当前 tc 规则:\n{result.stdout}")
+    print(f"\n [信息] {node}:{interface} 当前 tc 规则:\n{result.stdout}")
     return result.stdout

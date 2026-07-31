@@ -10,6 +10,7 @@ DATA_DIR = Path("data")
 RESULT_FILES = {
     "star": DATA_DIR / "star_data.txt",
     "chain": DATA_DIR / "chain_data.txt",
+    "mesh": DATA_DIR / "mesh_data.txt",  # 新增网状拓扑数据文件路径
 }
 
 def result_path(topology_type):
@@ -47,7 +48,6 @@ def _format_star(data):
     target, delay, jitter, loss, bandwidth, avg_rtt, real_loss, throughput = data
     link = {"test_b": "test_a-->test_b", "test_c": "test_a-->test_c"}.get(target, "unknown")
     
-    # 去除微秒，格式化为整洁时间
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     
     return (
@@ -77,6 +77,21 @@ def _format_chain(data):
         f"{_format_result(avg_rtt, real_loss, throughput)}"
     )
 
+def _format_mesh(data):
+    """[内部函数] 组装网状拓扑的完整测试报告。"""
+    link_name, delay, jitter, loss, bandwidth, avg_rtt, real_loss, throughput = data
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    
+    return (
+        f"实验时间:{timestamp}\n"
+        "拓扑类型:网状拓扑\n"
+        f"互联链路:{link_name}\n\n"
+        "损伤参数:\n"
+        f"{_format_damage(delay, jitter, loss, bandwidth)}\n"
+        "测试结果:\n"
+        f"{_format_result(avg_rtt, real_loss, throughput)}"
+    )
+
 
 # ==================================
 # 核心保存逻辑
@@ -86,12 +101,16 @@ def save_result(data, topology_type):
     以追加模式保存单次测量记录，保持项目的原始文本布局，供绘图正则解析。
     
     :param data: 测量参数与结果的组合列表
-    :param topology_type: "star" 或 "chain"
+    :param topology_type: "star", "chain" 或 "mesh"
     """
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     
-    # 动态匹配格式化函数
-    formatters = {"star": _format_star, "chain": _format_chain}
+    # 动态匹配格式化函数，注册 mesh 类型
+    formatters = {
+        "star": _format_star, 
+        "chain": _format_chain,
+        "mesh": _format_mesh
+    }
     if topology_type not in formatters:
         raise ValueError(f"不支持的拓扑类型: {topology_type}")
 
@@ -103,5 +122,5 @@ def save_result(data, topology_type):
         handle.write(formatter(data))
         handle.write("==============================\n\n")
         
-    print(f" 实验数据已保存到: {path}")
+    print(f" [成功] 实验数据已保存到: {path}")
     return path

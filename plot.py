@@ -24,7 +24,7 @@ def read_star_data():
     """读取并解析星型拓扑数据"""
     filename = "data/star_data.txt"
     if not os.path.exists(filename):
-        print("未找到星型数据文件")
+        print("[跳过] 未找到星型数据文件")
         return [], []
 
     with open(filename, "r", encoding="utf-8") as f:
@@ -74,7 +74,7 @@ def read_chain_data():
     """读取并解析链式拓扑数据，保留单段链路设定值用于叠加分析"""
     filename = "data/chain_data.txt"
     if not os.path.exists(filename):
-        print("未找到链式数据文件")
+        print("[跳过] 未找到链式数据文件")
         return []
 
     with open(filename, "r", encoding="utf-8") as f:
@@ -113,6 +113,52 @@ def read_chain_data():
         })
 
     return result
+
+
+def read_mesh_data():
+    """读取并解析网状拓扑数据"""
+    filename = "data/mesh_data.txt"
+    if not os.path.exists(filename):
+        print("[跳过] 未找到网状数据文件")
+        return {}
+
+    with open(filename, "r", encoding="utf-8") as f:
+        text = f.read()
+
+    blocks = text.split("==============================")
+    datasets = defaultdict(list)
+
+    for block in blocks:
+        link_match = re.search(r'互联链路:(.+)', block)
+        if not link_match:
+            continue
+            
+        link = link_match.group(1).strip()
+
+        delay = re.search(r'延迟\(delay\):([\d.]+)', block)
+        jitter = re.search(r'抖动\(jitter\):([\d.]+)', block)
+        loss = re.search(r'丢包\(loss\):([\d.]+)', block)
+        bandwidth = re.search(r'带宽\(bandwidth\):([\d.]+)', block)
+        rtt = re.search(r'平均RTT:([\d.]+)', block)
+        real_loss = re.search(r'实际丢包率:([\d.]+)', block)
+        throughput = re.search(r'吞吐量:([\d.]+)', block)
+
+        if not (delay and loss and throughput):
+            continue
+
+        data = {
+            "delay": float(delay.group(1)),
+            "jitter": float(jitter.group(1)) if jitter else 0,
+            "loss": float(loss.group(1)),
+            "bandwidth": float(bandwidth.group(1)) if bandwidth else 0,
+            "rtt": float(rtt.group(1)) if rtt else 0,
+            "real_loss": float(real_loss.group(1)) if real_loss else 0,
+            "throughput": float(throughput.group(1))
+        }
+        
+        datasets[link].append(data)
+
+    return datasets
 
 
 def _group_mean(rows, x_name, y_name):
@@ -353,12 +399,31 @@ def generate_plot(topology_type):
         draw_chain_composition_bar(data, path, "chain")
         draw_heatmap(data, path, "chain")
 
+    elif topology_type == "mesh":
+        datasets = read_mesh_data()
+        if not datasets:
+            return
+            
+        draw_delay(datasets, path, "mesh_merged")
+        draw_delay_throughput(datasets, path, "mesh_merged")
+        draw_loss(datasets, path, "mesh_merged")
+        draw_loss_measured(datasets, path, "mesh_merged")
+
+        # 遍历网状拓扑的每一条独立链路，生成对应的热力图
+        for link_name, data in datasets.items():
+            # 将类似 "test_a<-->test_b" 转换为文件系统安全的名字
+            safe_name = link_name.replace("<-->", "_to_").replace(" ", "")
+            draw_heatmap(data, path, safe_name)
+
 
 if __name__ == "__main__":
-    print("正在生成星型拓扑图表...")
+    print("[处理中] 正在生成星型拓扑图表...")
     generate_plot("star")
     
-    print("正在生成链式拓扑图表 (包含内部叠加成分柱状图)...")
+    print("[处理中] 正在生成链式拓扑图表 (包含内部叠加成分柱状图)...")
     generate_plot("chain")
     
-    print("全部图表生成完毕！")
+    print("[处理中] 正在生成网状拓扑图表...")
+    generate_plot("mesh")
+    
+    print("[成功] 全部图表生成完毕！")
