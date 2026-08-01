@@ -65,7 +65,7 @@ def set_damage(node, interface, delay=0, jitter=0, loss=0, bandwidth=0):
         _docker_exec(
             node, "tc", "qdisc", "add", "dev", interface,
             "root", "handle", "1:", "tbf", "rate", f"{bandwidth}mbit",
-            "burst", "1m", "latency", "400ms",
+            "burst", "64kbit", "latency", "400ms",
         )
         
         # 2. 如果存在其他损伤，将其串联在 TBF 的子节点下
