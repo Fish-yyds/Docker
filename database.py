@@ -1,96 +1,95 @@
-"""使用 TXT 格式保存测试测量数据。"""
+"""使用 SQLite 结构化存储测试测量数据。"""
 
+import sqlite3
 from datetime import datetime
 from pathlib import Path
 
 # ==================================
-# 全局路径配置
+# 全局路径与数据库配置
 # ==================================
 DATA_DIR = Path("data")
-RESULT_FILES = {
-    "star": DATA_DIR / "star_data.txt",
-    "chain": DATA_DIR / "chain_data.txt",
-    "mesh": DATA_DIR / "mesh_data.txt",  # 新增网状拓扑数据文件路径
-}
+DB_PATH = DATA_DIR / "simulation_results.db"
 
-def result_path(topology_type):
+def init_db():
+    """初始化 SQLite 数据库，自动建表"""
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    with sqlite3.connect(DB_PATH) as conn:
+        cursor = conn.cursor()
+        # 创建统一的数据总表，利用可空字段兼容不同的拓扑参数
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS test_results (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp TEXT NOT NULL,
+                topology_type TEXT NOT NULL,
+                link_name TEXT NOT NULL,
+                
+                -- 通用与单链路损伤参数 (Star, Mesh)
+                delay REAL,
+                jitter REAL,
+                loss REAL,
+                bandwidth REAL,
+                
+                -- 链式拓扑专用损伤参数 (Chain)
+                ab_delay REAL,
+                ab_jitter REAL,
+                ab_loss REAL,
+                ab_bandwidth REAL,
+                bc_delay REAL,
+                bc_jitter REAL,
+                bc_loss REAL,
+                bc_bandwidth REAL,
+                
+                -- 测试结果指标
+                avg_rtt REAL,
+                real_loss REAL,
+                throughput REAL
+            )
+        ''')
+        conn.commit()
+
+# 模块加载时自动建表
+init_db()
+
+def result_path(topology_type=None):
     """
-    获取指定拓扑的数据保存路径（也用于 auto_test 脚本备份历史文件）。
+    返回数据库路径。
+    保留此函数和 topology_type 参数，是为了向下兼容 auto_test.py 中的 archive_history_data 备份逻辑。
     """
-    try:
-        return RESULT_FILES[topology_type]
-    except KeyError as error:
-        raise ValueError(f"不支持的拓扑类型: {topology_type}") from error
+    return DB_PATH
 
 
 # ==================================
-# 文本格式化辅助函数
+# 数据解析辅助函数
 # ==================================
-def _format_damage(delay, jitter, loss, bandwidth):
-    """[内部函数] 统一格式化单段链路损伤参数文本。"""
-    return (
-        f"延迟(delay):{delay} ms\n"
-        f"抖动(jitter):{jitter} ms\n"
-        f"丢包(loss):{loss}%\n"
-        f"带宽(bandwidth):{bandwidth} Mbps\n"
-    )
-
-def _format_result(avg_rtt, real_loss, throughput):
-    """[内部函数] 统一格式化实际测量结果文本。"""
-    return (
-        f"平均RTT:{avg_rtt} ms\n"
-        f"实际丢包率:{real_loss}%\n"
-        f"吞吐量:{throughput} Mbps\n"
-    )
-
-def _format_star(data):
-    """[内部函数] 组装星型拓扑的完整测试报告。"""
-    target, delay, jitter, loss, bandwidth, avg_rtt, real_loss, throughput = data
-    link = {"test_b": "test_a-->test_b", "test_c": "test_a-->test_c"}.get(target, "unknown")
+def _parse_star_or_mesh(data, topology_type):
+    """解析星型与网状拓扑的单链路数据"""
+    target_or_link, delay, jitter, loss, bandwidth, avg_rtt, real_loss, throughput = data
     
-    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    
-    return (
-        f"实验时间:{timestamp}\n"
-        "拓扑类型:星型拓扑\n"
-        f"链路:{link}\n\n"
-        "损伤参数:\n"
-        f"{_format_damage(delay, jitter, loss, bandwidth)}\n"
-        "测试结果:\n"
-        f"{_format_result(avg_rtt, real_loss, throughput)}"
-    )
+    # 格式化星型拓扑的链路名称
+    link = target_or_link
+    if topology_type == "star" and target_or_link in ["test_b", "test_c"]:
+        link = f"test_a-->{target_or_link}"
+        
+    return {
+        "topology_type": topology_type,
+        "link_name": link,
+        "delay": delay, "jitter": jitter, "loss": loss, "bandwidth": bandwidth,
+        "avg_rtt": avg_rtt, "real_loss": real_loss, "throughput": throughput
+    }
 
-def _format_chain(data):
-    """[内部函数] 组装链式拓扑的完整测试报告。"""
+def _parse_chain(data):
+    """解析链式拓扑的级联双链路数据"""
     link, ab, bc, avg_rtt, real_loss, throughput = data
-    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     
-    return (
-        f"实验时间:{timestamp}\n"
-        "拓扑类型:链式拓扑\n"
-        f"链路:{link}\n\n"
-        "第一段链路(test_a-->test_b)损伤参数:\n"
-        f"{_format_damage(ab['AB_delay'], ab['AB_jitter'], ab['AB_loss'], ab['AB_bandwidth'])}\n"
-        "第二段链路(test_b-->test_c)损伤参数:\n"
-        f"{_format_damage(bc['BC_delay'], bc['BC_jitter'], bc['BC_loss'], bc['BC_bandwidth'])}\n"
-        "端到端测试结果(test_a-->test_c):\n"
-        f"{_format_result(avg_rtt, real_loss, throughput)}"
-    )
-
-def _format_mesh(data):
-    """[内部函数] 组装网状拓扑的完整测试报告。"""
-    link_name, delay, jitter, loss, bandwidth, avg_rtt, real_loss, throughput = data
-    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    
-    return (
-        f"实验时间:{timestamp}\n"
-        "拓扑类型:网状拓扑\n"
-        f"互联链路:{link_name}\n\n"
-        "损伤参数:\n"
-        f"{_format_damage(delay, jitter, loss, bandwidth)}\n"
-        "测试结果:\n"
-        f"{_format_result(avg_rtt, real_loss, throughput)}"
-    )
+    return {
+        "topology_type": "chain",
+        "link_name": link,
+        "ab_delay": ab['AB_delay'], "ab_jitter": ab['AB_jitter'], 
+        "ab_loss": ab['AB_loss'], "ab_bandwidth": ab['AB_bandwidth'],
+        "bc_delay": bc['BC_delay'], "bc_jitter": bc['BC_jitter'], 
+        "bc_loss": bc['BC_loss'], "bc_bandwidth": bc['BC_bandwidth'],
+        "avg_rtt": avg_rtt, "real_loss": real_loss, "throughput": throughput
+    }
 
 
 # ==================================
@@ -98,29 +97,35 @@ def _format_mesh(data):
 # ==================================
 def save_result(data, topology_type):
     """
-    以追加模式保存单次测量记录，保持项目的原始文本布局，供绘图正则解析。
+    将单次测量记录直接插入到 SQLite 数据库中。
     
     :param data: 测量参数与结果的组合列表
     :param topology_type: "star", "chain" 或 "mesh"
     """
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
-    
-    # 动态匹配格式化函数，注册 mesh 类型
-    formatters = {
-        "star": _format_star, 
-        "chain": _format_chain,
-        "mesh": _format_mesh
-    }
-    if topology_type not in formatters:
+    # 1. 结构化解析数据
+    if topology_type in ("star", "mesh"):
+        record_dict = _parse_star_or_mesh(data, topology_type)
+    elif topology_type == "chain":
+        record_dict = _parse_chain(data)
+    else:
         raise ValueError(f"不支持的拓扑类型: {topology_type}")
 
-    path = result_path(topology_type)
-    formatter = formatters[topology_type]
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     
-    with path.open("a", encoding="utf-8") as handle:
-        handle.write("==============================\n")
-        handle.write(formatter(data))
-        handle.write("==============================\n\n")
+    # 2. 动态拼接 SQL 入库
+    with sqlite3.connect(DB_PATH) as conn:
+        cursor = conn.cursor()
         
-    print(f" [成功] 实验数据已保存到: {path}")
-    return path
+        columns = ['timestamp'] + list(record_dict.keys())
+        placeholders = ', '.join(['?'] * len(columns))
+        values = [timestamp] + list(record_dict.values())
+        
+        sql = f'''
+            INSERT INTO test_results ({', '.join(columns)})
+            VALUES ({placeholders})
+        '''
+        cursor.execute(sql, values)
+        conn.commit()
+        
+    print(f" [成功] 实验数据已结构化入库 SQLite (ID: {cursor.lastrowid})")
+    return DB_PATH
