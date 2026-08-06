@@ -49,6 +49,11 @@ def _auto_measure(target, source="test_a", attempts=3):
     """内置重试机制的自动化测量函数，支持指定发包源"""
     for attempt in range(1, attempts + 1):
         avg_rtt, measured_loss = ping_test(target, source=source)
+        if measured_loss >= 100.0:
+            print(f" [警告] {target} 连通性失败，跳过本轮 Iperf3，避免无意义超时。")
+            time.sleep(2)
+            continue
+
         throughput = iperf_test(target, source=source)
         
         if throughput > 0:
@@ -261,3 +266,4 @@ if __name__ == "__main__":
         print("\n [成功] Containerlab 横向对比测试与图表生成已完成！")
     else:
         print("\n [中止] 请先拉起环境后再运行此测试。")
+

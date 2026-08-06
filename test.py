@@ -3,6 +3,8 @@
 """
 
 import json
+import math
+import os
 import re
 import subprocess
 import time
@@ -12,13 +14,25 @@ def _run(args, timeout):
     """
     [内部函数] 执行带超时的 Shell 命令并捕获输出。
     """
-    return subprocess.run(
-        args,
-        check=False,
-        capture_output=True,
-        text=True,
-        timeout=timeout,
+    try:
+        return subprocess.run(
+            args,
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+        )
+    except FileNotFoundError as exc:
+        raise RuntimeError("未找到 docker 命令，请先启动 Docker 环境。") from exc
+
+
+def _quick_ping(target, source):
+    """用少量报文快速排除容器、路由或 Docker 环境故障。"""
+    result = _run(
+        ["docker", "exec", source, "ping", "-n", "-c", "5", "-i", "0.2", "-W", "1", target],
+        timeout=8,
     )
+    return result.returncode == 0, result
 
 
 def _server_name(target):
@@ -46,12 +60,14 @@ def _restart_iperf_server(target):
     _run(["docker", "exec", server, "pkill", "-9", "iperf3"], timeout=10)
     
     # 后台启动新进程 (单次模式 -1)，不捕获输出以防阻塞
-    subprocess.run(
+    result = subprocess.run(
         ["docker", "exec", "-d", server, "iperf3", "-s", "-1"],
         check=False,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
     )
+    if result.returncode != 0:
+        raise RuntimeError(f"无法在容器 {server} 中启动 iperf3 服务端。")
     time.sleep(1)
 
 
@@ -65,12 +81,25 @@ def ping_test(target, source="test_a", attempts=2):
     :return: (avg_rtt, real_loss)
     """
     print(f" [处理中] 正在执行 Ping 测试 (源: {source} -> 目标: {target})...")
+
+    reachable, probe = _quick_ping(target, source)
+    if not reachable:
+        detail = probe.stderr.strip() or probe.stdout.strip() or "无输出"
+        print(f" [失败] 快速连通性预检未通过，跳过长时间测量:\n{detail}")
+        return 0.0, 100.0
+
+    packet_count = max(10, int(os.getenv("NETWORK_SIM_PING_COUNT", "500")))
+    interval = max(0.01, float(os.getenv("NETWORK_SIM_PING_INTERVAL", "0.02")))
+    deadline = math.ceil(packet_count * interval + 10)
     
     for attempt in range(1, attempts + 1):
         try:
             result = _run(
-                ["docker", "exec", source, "ping", "-c", "10000", "-i", "0.01", "-W", "2", target], 
-                timeout=140
+                [
+                    "docker", "exec", source, "ping", "-n", "-c", str(packet_count),
+                    "-i", str(interval), "-W", "2", "-w", str(deadline), target,
+                ],
+                timeout=deadline + 5,
             )
         except subprocess.TimeoutExpired:
             result = None
@@ -113,11 +142,19 @@ def iperf_test(target, source="test_a", attempts=2):
                 "-t", "15", "--omit", "3", "--json",
             ], timeout=35)
             
+            if result.returncode != 0:
+                detail = result.stderr.strip() or result.stdout.strip() or "无输出"
+                print(f" [警告] Iperf3 客户端失败 (第 {attempt}/{attempts} 次): {detail}")
+                time.sleep(2)
+                continue
+
             payload = json.loads(result.stdout)
+            if payload.get("error"):
+                raise KeyError(payload["error"])
             bits_per_second = payload["end"]["sum_received"]["bits_per_second"]
             throughput = bits_per_second / 1_000_000
             
-            if result.returncode == 0 and throughput > 0:
+            if throughput > 0:
                 throughput_rounded = round(throughput, 3)
                 print(f"  └─ Iperf3 测量完成: 吞吐量 = {throughput_rounded} Mbps")
                 return throughput_rounded
@@ -131,3 +168,4 @@ def iperf_test(target, source="test_a", attempts=2):
         
     print(" [失败] Iperf3 测试最终失败，返回默认吞吐量 (0.0 Mbps)。")
     return 0.0
+

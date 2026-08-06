@@ -10,19 +10,20 @@ import matplotlib.pyplot as plt
 # 基础工具函数
 # ==================================
 
-def run(cmd):
+def run(cmd, check=True):
     """
-    执行 Shell 命令的公共包装函数，静默屏蔽标准错误输出
+    执行 Shell 命令，并在关键步骤失败时立即给出真实错误。
     """
     result = subprocess.run(
         cmd,
         shell=True,
         stdout=subprocess.PIPE,
-        stderr=subprocess.DEVNULL,
+        stderr=subprocess.PIPE,
         text=True
     )
-   # if result.stdout.strip():
-    #    print(result.stdout.strip())
+    if check and result.returncode != 0:
+        detail = result.stderr.strip() or result.stdout.strip() or "无错误输出"
+        raise RuntimeError(f"命令执行失败 (exit={result.returncode}): {cmd}\n{detail}")
     return result
 
 
@@ -100,13 +101,15 @@ def _create_chain():
     run("docker network create --driver bridge --subnet=172.22.0.0/16 net_bc")
 
     run("docker run -dit --name test_a --network net_ab --ip 172.21.0.2 --cap-add NET_ADMIN ubuntu_net_tools:22.04")
-    run("docker run -dit --name test_b --network net_ab --ip 172.21.0.3 --cap-add NET_ADMIN ubuntu_net_tools:22.04")
+    run(
+        "docker run -dit --name test_b --network net_ab --ip 172.21.0.3 "
+        "--cap-add NET_ADMIN --sysctl net.ipv4.ip_forward=1 ubuntu_net_tools:22.04"
+    )
     run("docker run -dit --name test_c --network net_bc --ip 172.22.0.3 --cap-add NET_ADMIN ubuntu_net_tools:22.04")
 
     run("docker network connect --ip 172.22.0.2 net_bc test_b")
     
-    run('docker exec test_b bash -c "echo 1 > /proc/sys/net/ipv4/ip_forward"')
-    run('docker exec test_b bash -c "iptables -P FORWARD ACCEPT && iptables -F"')
+    run('docker exec test_b bash -c "iptables -P FORWARD ACCEPT && iptables -F FORWARD"')
 
     run("""
         docker exec test_a tc qdisc del dev eth0 root || true
@@ -115,11 +118,49 @@ def _create_chain():
         docker exec test_c tc qdisc del dev eth0 root || true
     """)
 
-    run('docker exec test_a bash -c "ip route add 172.22.0.0/16 via 172.21.0.3"')
-    run('docker exec test_c bash -c "ip route add 172.21.0.0/16 via 172.22.0.2"')
+    run('docker exec test_a ip route replace 172.22.0.0/16 via 172.21.0.3')
+    run('docker exec test_c ip route replace 172.21.0.0/16 via 172.22.0.2')
 
-    print("\n[成功] 正在测试链式端到端连通性...")
-    run("docker exec test_a ping -c 3 172.22.0.3")
+    _verify_chain_connectivity()
+
+
+def _verify_chain_connectivity():
+    """在进入测量菜单前验证转发、路由和端到端连通性。"""
+    checks = [
+        ("test_b IPv4 转发", "docker exec test_b sysctl -n net.ipv4.ip_forward", "1"),
+        ("test_a 静态路由", "docker exec test_a ip route get 172.22.0.3", "via 172.21.0.3"),
+        ("test_c 回程路由", "docker exec test_c ip route get 172.21.0.2", "via 172.22.0.2"),
+    ]
+    for label, command, expected in checks:
+        result = run(command)
+        if expected not in result.stdout:
+            raise RuntimeError(f"{label}校验失败，实际输出:\n{result.stdout.strip()}")
+
+    print("\n[处理中] 正在验证链式端到端连通性...")
+    ping = run("docker exec test_a ping -n -c 3 -W 2 172.22.0.3", check=False)
+    if ping.returncode == 0:
+        print("[成功] 链式端到端连通性正常。")
+        return
+
+    diagnostic_commands = [
+        "docker exec test_a ip -br addr",
+        "docker exec test_a ip route",
+        "docker exec test_b ip -br addr",
+        "docker exec test_b ip route",
+        "docker exec test_b iptables -nvL FORWARD",
+        "docker exec test_c ip -br addr",
+        "docker exec test_c ip route",
+    ]
+    diagnostics = []
+    for command in diagnostic_commands:
+        result = run(command, check=False)
+        output = result.stdout.strip() or result.stderr.strip() or "无输出"
+        diagnostics.append(f"$ {command}\n{output}")
+    ping_output = ping.stdout.strip() or ping.stderr.strip() or "无输出"
+    raise RuntimeError(
+        "链式拓扑预检失败，已停止后续 Ping/Iperf 测量。\n"
+        f"Ping 输出:\n{ping_output}\n\n" + "\n\n".join(diagnostics)
+    )
 
 
 def _create_mesh():
@@ -169,3 +210,4 @@ def create_topology(topology_type):
 
     install_tools()
     generate_topology_image(topology_type)
+

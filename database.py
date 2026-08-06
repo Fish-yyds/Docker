@@ -2,6 +2,7 @@
 
 import sqlite3
 import inspect
+import time
 from datetime import datetime
 from pathlib import Path
 
@@ -11,10 +12,19 @@ from pathlib import Path
 DATA_DIR = Path("data")
 DB_PATH = DATA_DIR / "simulation_results.db"
 
+
+def _connect():
+    """创建带并发等待策略的 SQLite 连接。"""
+    conn = sqlite3.connect(DB_PATH, timeout=30.0)
+    conn.execute("PRAGMA busy_timeout = 30000")
+    return conn
+
 def init_db():
     """初始化 SQLite 数据库，自动建表"""
     DATA_DIR.mkdir(parents=True, exist_ok=True)
-    with sqlite3.connect(DB_PATH) as conn:
+    with _connect() as conn:
+        conn.execute("PRAGMA journal_mode = WAL")
+        conn.execute("PRAGMA synchronous = NORMAL")
         cursor = conn.cursor()
         # 创建统一的数据总表，利用可空字段兼容不同的拓扑参数
         cursor.execute('''
@@ -122,20 +132,27 @@ def save_result(data, topology_type):
 
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     
-    # 4. 动态拼接 SQL 入库 (增加 timeout=10.0 避免并发写入锁死)
-    with sqlite3.connect(DB_PATH, timeout=10.0) as conn:
-        cursor = conn.cursor()
+    columns = ['timestamp', 'tool_name'] + list(record_dict.keys())
+    placeholders = ', '.join(['?'] * len(columns))
+    values = [timestamp, tool_name] + list(record_dict.values())
+    sql = f'''
+        INSERT INTO test_results ({', '.join(columns)})
+        VALUES ({placeholders})
+    '''
+
+    lastrowid = None
+    for attempt in range(1, 4):
+        try:
+            with _connect() as conn:
+                cursor = conn.execute(sql, values)
+                conn.commit()
+                lastrowid = cursor.lastrowid
+            break
+        except sqlite3.OperationalError as exc:
+            if "locked" not in str(exc).lower() or attempt == 3:
+                raise
+            time.sleep(0.5 * attempt)
         
-        columns = ['timestamp', 'tool_name'] + list(record_dict.keys())
-        placeholders = ', '.join(['?'] * len(columns))
-        values = [timestamp, tool_name] + list(record_dict.values())
-        
-        sql = f'''
-            INSERT INTO test_results ({', '.join(columns)})
-            VALUES ({placeholders})
-        '''
-        cursor.execute(sql, values)
-        conn.commit()
-        
-    print(f" [成功] 数据入库 SQLite (工具: {tool_name}, ID: {cursor.lastrowid})")
+    print(f" [成功] 数据入库 SQLite (工具: {tool_name}, ID: {lastrowid})")
     return DB_PATH
+
