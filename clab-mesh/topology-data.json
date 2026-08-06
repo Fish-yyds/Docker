@@ -1,0 +1,163 @@
+{
+  "name": "mesh",
+  "type": "clab",
+  "clab": {
+    "config": {
+      "prefix": "",
+      "mgmt": {
+        "network": "clab_mgmt",
+        "bridge": "br-d44842efd95c",
+        "ipv4-subnet": "172.30.30.0/24",
+        "ipv4-gw": "172.30.30.1",
+        "ipv6-gw": "fe80::cc68:80ff:fed6:fef2",
+        "external-access": true
+      }
+    }
+  },
+  "ssh-pub-keys": [],
+  "nodes": {
+    "test_a": {
+      "index": "0",
+      "shortname": "test_a",
+      "longname": "test_a",
+      "fqdn": "test_a.mesh.io",
+      "group": "",
+      "labdir": "/home/yd/network_sim/clab-mesh/test_a",
+      "kind": "linux",
+      "image": "ubuntu_net_tools:22.04",
+      "mgmt-net": "",
+      "mgmt-intf": "",
+      "mgmt-ipv4-address": "172.30.30.2",
+      "mgmt-ipv4-prefix-length": 24,
+      "mgmt-ipv6-address": "",
+      "mgmt-ipv6-prefix-length": 0,
+      "mac-address": "",
+      "labels": {
+        "clab-mgmt-net-bridge": "br-d44842efd95c",
+        "clab-node-group": "",
+        "clab-node-kind": "linux",
+        "clab-node-lab-dir": "/home/yd/network_sim/clab-mesh/test_a",
+        "clab-node-longname": "test_a",
+        "clab-node-name": "test_a",
+        "clab-node-type": "",
+        "clab-owner": "yd",
+        "clab-topo-file": "/home/yd/network_sim/mesh.clab.yml",
+        "containerlab": "mesh"
+      },
+      "port-bindings": [
+      ]
+    },
+    "test_b": {
+      "index": "1",
+      "shortname": "test_b",
+      "longname": "test_b",
+      "fqdn": "test_b.mesh.io",
+      "group": "",
+      "labdir": "/home/yd/network_sim/clab-mesh/test_b",
+      "kind": "linux",
+      "image": "ubuntu_net_tools:22.04",
+      "mgmt-net": "",
+      "mgmt-intf": "",
+      "mgmt-ipv4-address": "172.30.30.4",
+      "mgmt-ipv4-prefix-length": 24,
+      "mgmt-ipv6-address": "",
+      "mgmt-ipv6-prefix-length": 0,
+      "mac-address": "",
+      "labels": {
+        "clab-mgmt-net-bridge": "br-d44842efd95c",
+        "clab-node-group": "",
+        "clab-node-kind": "linux",
+        "clab-node-lab-dir": "/home/yd/network_sim/clab-mesh/test_b",
+        "clab-node-longname": "test_b",
+        "clab-node-name": "test_b",
+        "clab-node-type": "",
+        "clab-owner": "yd",
+        "clab-topo-file": "/home/yd/network_sim/mesh.clab.yml",
+        "containerlab": "mesh"
+      },
+      "port-bindings": [
+      ]
+    },
+    "test_c": {
+      "index": "2",
+      "shortname": "test_c",
+      "longname": "test_c",
+      "fqdn": "test_c.mesh.io",
+      "group": "",
+      "labdir": "/home/yd/network_sim/clab-mesh/test_c",
+      "kind": "linux",
+      "image": "ubuntu_net_tools:22.04",
+      "mgmt-net": "",
+      "mgmt-intf": "",
+      "mgmt-ipv4-address": "172.30.30.3",
+      "mgmt-ipv4-prefix-length": 24,
+      "mgmt-ipv6-address": "",
+      "mgmt-ipv6-prefix-length": 0,
+      "mac-address": "",
+      "labels": {
+        "clab-mgmt-net-bridge": "br-d44842efd95c",
+        "clab-node-group": "",
+        "clab-node-kind": "linux",
+        "clab-node-lab-dir": "/home/yd/network_sim/clab-mesh/test_c",
+        "clab-node-longname": "test_c",
+        "clab-node-name": "test_c",
+        "clab-node-type": "",
+        "clab-owner": "yd",
+        "clab-topo-file": "/home/yd/network_sim/mesh.clab.yml",
+        "containerlab": "mesh"
+      },
+      "port-bindings": [
+      ]
+    }
+  },
+  "links": [
+    {
+      "endpoints": {
+        "a": {
+          "node": "test_a",
+          "interface": "eth1",
+          "mac": "aa:c1:ab:ed:45:94",
+          "peer": "z"
+        },
+        "z": {
+          "node": "test_b",
+          "interface": "eth1",
+          "mac": "aa:c1:ab:66:b0:30",
+          "peer": "a"
+        }
+      }
+    },
+    {
+      "endpoints": {
+        "a": {
+          "node": "test_b",
+          "interface": "eth2",
+          "mac": "aa:c1:ab:80:4b:7f",
+          "peer": "z"
+        },
+        "z": {
+          "node": "test_c",
+          "interface": "eth1",
+          "mac": "aa:c1:ab:34:18:22",
+          "peer": "a"
+        }
+      }
+    },
+    {
+      "endpoints": {
+        "a": {
+          "node": "test_a",
+          "interface": "eth2",
+          "mac": "aa:c1:ab:fa:fb:2e",
+          "peer": "z"
+        },
+        "z": {
+          "node": "test_c",
+          "interface": "eth2",
+          "mac": "aa:c1:ab:0c:f8:a9",
+          "peer": "a"
+        }
+      }
+    }
+  ]
+}

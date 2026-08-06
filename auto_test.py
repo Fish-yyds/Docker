@@ -42,13 +42,7 @@ def experiment_matrix():
 
 
 def archive_history_data(topology):
-    """备份指定拓扑的历史数据"""
-    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    path = result_path(topology)
-    if path.exists():
-        backup = path.with_name(f"{path.stem}_{stamp}.bak.txt")
-        path.replace(backup)
-        print(f"\n[成功] 旧数据已安全备份至: {backup}")
+    pass
 
 
 def _auto_measure(target, source="test_a", attempts=3):
@@ -130,7 +124,7 @@ def run_chain_auto_tests():
 
 
 def run_mesh_auto_tests():
-    """针对网状拓扑的三条互联链路分别执行全矩阵测试"""
+    """针对原生 Docker 网状拓扑执行全矩阵测试"""
     trials = experiment_matrix()
     total_trials = len(trials)
     
@@ -144,7 +138,7 @@ def run_mesh_auto_tests():
         for repeat in range(1, REPEATS + 1):
             for index, trial in enumerate(trials, start=1):
                 print(f"\n[{'='*40}]")
-                print(f" [自动测试 | 网状 {link_desc}] 循环 {repeat}/{REPEATS} | 测试组 {index}/{total_trials}")
+                print(f" [自动测试 | 原生网状 {link_desc}] 循环 {repeat}/{REPEATS} | 测试组 {index}/{total_trials}")
                 print(f"[{'='*40}]")
                 
                 set_damage(sender, interface, **trial)
@@ -163,17 +157,56 @@ def run_mesh_auto_tests():
                 time.sleep(1)
 
 
+def run_clab_mesh_auto_tests():
+    """针对 Containerlab 网状拓扑执行全矩阵测试 (新增对比项)"""
+    trials = experiment_matrix()
+    total_trials = len(trials)
+    
+    # 网卡全部向后偏移一位，避开 Clab 管理网卡 (eth0)
+    mesh_links = [
+        ("clab_mesh_a<-->b", "test_a", "eth1", "172.25.0.3"), 
+        ("clab_mesh_b<-->c", "test_b", "eth2", "172.26.0.3"), 
+        ("clab_mesh_a<-->c", "test_a", "eth2", "172.27.0.3")  
+    ]
+    
+    for link_desc, sender, interface, target_ip in mesh_links:
+        for repeat in range(1, REPEATS + 1):
+            for index, trial in enumerate(trials, start=1):
+                print(f"\n[{'='*40}]")
+                print(f" [自动测试 | Clab网状 {link_desc}] 循环 {repeat}/{REPEATS} | 测试组 {index}/{total_trials}")
+                print(f"[{'='*40}]")
+                
+                set_damage(sender, interface, **trial)
+                measurement = _auto_measure(target_ip, source=sender)
+                
+                if measurement is None:
+                    print(f" [跳过] {link_desc} 参数组 {trial}: 未获取到有效数据")
+                    continue
+                    
+                avg_rtt, measured_loss, throughput = measurement
+                
+                # 依然传入 "mesh" 欺骗 database.py 绕过表校验，利用 link_desc 让 plot.py 自动分图
+                save_result([
+                    link_desc, trial["delay"], trial["jitter"], trial["loss"],
+                    trial["bandwidth"], avg_rtt, measured_loss, throughput,
+                ], "mesh")
+                
+                time.sleep(1)
+
+
 if __name__ == "__main__":
     from topology import create_topology
     from plot import generate_plot
 
-    print("\n [开始] 准备顺序执行所有拓扑的自动化测试 (星型 -> 链式 -> 网状)...\n")
+    print("\n [开始] 准备顺序执行拓扑的自动化测试...")
+
+
 
     # ==========================
     # 1. 星型拓扑测试
     # ==========================
     print("="*40)
-    print(" [阶段 1/3] 开始执行 星型拓扑 (Star) 自动化测试")
+    print(" [阶段 1/4] 开始执行 星型拓扑 (Star) 自动化测试")
     print("="*40)
     create_topology("star")
     archive_history_data("star")
@@ -186,7 +219,7 @@ if __name__ == "__main__":
     # 2. 链式拓扑测试
     # ==========================
     print("\n" + "="*40)
-    print(" [阶段 2/3] 开始执行 链式拓扑 (Chain) 自动化测试")
+    print(" [阶段 2/4] 开始执行 链式拓扑 (Chain) 自动化测试")
     print("="*40)
     create_topology("chain")
     archive_history_data("chain")
@@ -195,10 +228,10 @@ if __name__ == "__main__":
     generate_plot("chain")
 
     # ==========================
-    # 3. 网状拓扑测试
+    # 3. 网状拓扑测试 (原生 Docker)
     # ==========================
     print("\n" + "="*40)
-    print(" [阶段 3/3] 开始执行 网状拓扑 (Mesh) 自动化测试")
+    print(" [阶段 3/4] 开始执行 原生网状拓扑 (Mesh) 自动化测试")
     print("="*40)
     create_topology("mesh")
     archive_history_data("mesh")
@@ -206,4 +239,25 @@ if __name__ == "__main__":
     print("\n [处理中] 正在生成网状拓扑图表...")
     generate_plot("mesh")
 
-    print("\n [成功] 所有拓扑的自动化测试与图表生成已全部完成！")
+
+
+    # ==========================
+    # 4. Containerlab 网状拓扑测试 (新增横向对比评估专属)
+    # ==========================
+    print("\n" + "="*40)
+    print(" [阶段 4/4] 开始执行 Containerlab 网状拓扑自动化测试")
+    print("="*40)
+    
+    print("\n [前置确认] Containerlab 不受 Python 脚本的生命周期管理。")
+    print(" 请确保您已在 Ubuntu 终端手动执行了: sudo clab deploy -t mesh.clab.yml")
+    
+    confirm = input(" 确认已拉起 Containerlab 环境？ (y/n): ")
+    if confirm.lower() == 'y':
+        # 这里为了安全起见暂时不覆盖历史数据，因为我们希望合并展示
+        # 如果需要清理请取消注释: archive_history_data("mesh")
+        run_clab_mesh_auto_tests()
+        print("\n [处理中] 正在生成包含 Clab 对比数据的网状拓扑图表...")
+        generate_plot("mesh")
+        print("\n [成功] Containerlab 横向对比测试与图表生成已完成！")
+    else:
+        print("\n [中止] 请先拉起环境后再运行此测试。")

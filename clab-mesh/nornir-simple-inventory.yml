@@ -1,0 +1,16 @@
+---
+test_a:
+    username: 
+    password: 
+    platform: linux
+    hostname: 172.30.30.2
+test_b:
+    username: 
+    password: 
+    platform: linux
+    hostname: 172.30.30.4
+test_c:
+    username: 
+    password: 
+    platform: linux
+    hostname: 172.30.30.3

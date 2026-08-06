@@ -61,7 +61,6 @@ def set_damage(node, interface, delay=0, jitter=0, loss=0, bandwidth=0):
     # 根据是否限制带宽和损伤参数，决定执行的 tc 命令序列
     if bandwidth > 0:
         # 1. 限制带宽：使用 TBF (Token Bucket Filter) 算法配置 root 节点
-        # 【核心修复】：将 burst 从 32kbit 提升至 1m，防止高带宽(如 500M/1000M)下的微突发引发异常丢包
         _docker_exec(
             node, "tc", "qdisc", "add", "dev", interface,
             "root", "handle", "1:", "tbf", "rate", f"{bandwidth}mbit",

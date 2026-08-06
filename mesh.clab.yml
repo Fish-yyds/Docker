@@ -1,0 +1,40 @@
+name: mesh
+prefix: "" 
+
+mgmt:
+  network: clab_mgmt
+  ipv4-subnet: 172.30.30.0/24
+
+topology:
+  nodes:
+    test_a:
+      kind: linux
+      image: ubuntu_net_tools:22.04
+      exec:
+        - ip addr add 172.25.0.2/16 dev eth1
+        - ip link set dev eth1 mtu 1500
+        - ip addr add 172.27.0.2/16 dev eth2
+        - ip link set dev eth2 mtu 1500
+    
+    test_b:
+      kind: linux
+      image: ubuntu_net_tools:22.04
+      exec:
+        - ip addr add 172.25.0.3/16 dev eth1
+        - ip link set dev eth1 mtu 1500
+        - ip addr add 172.26.0.2/16 dev eth2
+        - ip link set dev eth2 mtu 1500
+
+    test_c:
+      kind: linux
+      image: ubuntu_net_tools:22.04
+      exec:
+        - ip addr add 172.26.0.3/16 dev eth1
+        - ip link set dev eth1 mtu 1500
+        - ip addr add 172.27.0.3/16 dev eth2
+        - ip link set dev eth2 mtu 1500
+
+  links:
+    - endpoints: ["test_a:eth1", "test_b:eth1"]
+    - endpoints: ["test_b:eth2", "test_c:eth1"]
+    - endpoints: ["test_a:eth2", "test_c:eth2"]

@@ -1,6 +1,7 @@
 """使用 SQLite 结构化存储测试测量数据。"""
 
 import sqlite3
+import inspect
 from datetime import datetime
 from pathlib import Path
 
@@ -20,6 +21,7 @@ def init_db():
             CREATE TABLE IF NOT EXISTS test_results (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 timestamp TEXT NOT NULL,
+                tool_name TEXT NOT NULL,
                 topology_type TEXT NOT NULL,
                 link_name TEXT NOT NULL,
                 
@@ -51,15 +53,11 @@ def init_db():
 init_db()
 
 def result_path(topology_type=None):
-    """
-    返回数据库路径。
-    保留此函数和 topology_type 参数，是为了向下兼容 auto_test.py 中的 archive_history_data 备份逻辑。
-    """
+    """返回数据库路径"""
     return DB_PATH
 
-
 # ==================================
-# 数据解析辅助函数
+# 数据解析辅助函数 (已恢复完整逻辑)
 # ==================================
 def _parse_star_or_mesh(data, topology_type):
     """解析星型与网状拓扑的单链路数据"""
@@ -91,18 +89,30 @@ def _parse_chain(data):
         "avg_rtt": avg_rtt, "real_loss": real_loss, "throughput": throughput
     }
 
-
 # ==================================
-# 核心保存逻辑
+# 核心保存逻辑 (支持全自动识别)
 # ==================================
 def save_result(data, topology_type):
     """
     将单次测量记录直接插入到 SQLite 数据库中。
-    
-    :param data: 测量参数与结果的组合列表
-    :param topology_type: "star", "chain" 或 "mesh"
+    内置智能探测：自动识别工具类型，无需手动传参。
     """
-    # 1. 结构化解析数据
+    tool_name = "docker_tc"
+    
+    # 1. 优先通过链路名称特征识别
+    link_str = str(data[0]).lower()
+    if "clab" in link_str or "containerlab" in link_str:
+        tool_name = "containerlab"
+    else:
+        # 2. 如果链路名没特征，反向侦测调用堆栈
+        try:
+            caller_name = inspect.stack()[1].function.lower()
+            if "clab" in caller_name or "containerlab" in caller_name:
+                tool_name = "containerlab"
+        except Exception:
+            pass
+
+    # 3. 结构化解析数据
     if topology_type in ("star", "mesh"):
         record_dict = _parse_star_or_mesh(data, topology_type)
     elif topology_type == "chain":
@@ -112,13 +122,13 @@ def save_result(data, topology_type):
 
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     
-    # 2. 动态拼接 SQL 入库
+    # 4. 动态拼接 SQL 入库
     with sqlite3.connect(DB_PATH) as conn:
         cursor = conn.cursor()
         
-        columns = ['timestamp'] + list(record_dict.keys())
+        columns = ['timestamp', 'tool_name'] + list(record_dict.keys())
         placeholders = ', '.join(['?'] * len(columns))
-        values = [timestamp] + list(record_dict.values())
+        values = [timestamp, tool_name] + list(record_dict.values())
         
         sql = f'''
             INSERT INTO test_results ({', '.join(columns)})
@@ -127,5 +137,5 @@ def save_result(data, topology_type):
         cursor.execute(sql, values)
         conn.commit()
         
-    print(f" [成功] 实验数据已结构化入库 SQLite (ID: {cursor.lastrowid})")
+    print(f" [成功] 数据入库 SQLite (工具: {tool_name}, ID: {cursor.lastrowid})")
     return DB_PATH
