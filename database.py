@@ -122,8 +122,8 @@ def save_result(data, topology_type):
 
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     
-    # 4. 动态拼接 SQL 入库
-    with sqlite3.connect(DB_PATH) as conn:
+    # 4. 动态拼接 SQL 入库 (增加 timeout=10.0 避免并发写入锁死)
+    with sqlite3.connect(DB_PATH, timeout=10.0) as conn:
         cursor = conn.cursor()
         
         columns = ['timestamp', 'tool_name'] + list(record_dict.keys())
