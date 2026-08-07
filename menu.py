@@ -1,325 +1,365 @@
-"""
-交互式菜单与手动测试逻辑模块
-通过导入 auto_test 模块，实现界面与自动化核心逻辑的分离。
-"""
+"""命令行交互入口；负责菜单展示和模块调度，不承载底层测量实现。"""
+
 import subprocess
-from topology import create_topology
-from damage import set_damage, check_tc
-from test import ping_test, iperf_test
+import time
+from pathlib import Path
+
+# 自动测试、网络损伤、数据库、绘图、测量和拓扑模块。
+from auto_test import (
+    CLAB_MESH_LINKS,
+    DOCKER_MESH_LINKS,
+    run_chain_auto_tests,
+    run_clab_mesh_auto_tests,
+    run_mesh_auto_tests,
+    run_star_auto_link,
+)
+from damage import check_tc, set_damage
 from database import save_result
 from plot import generate_plot
+from test import iperf_test, ping_test
+from topology import create_topology
 
-# 核心：导入分离出来的自动化测试工具函数
-from auto_test import (
-    archive_history_data, 
-    run_star_auto_link, 
-    run_chain_auto_tests, 
-    run_mesh_auto_tests,
-    run_clab_mesh_auto_tests  # <--- 新增导入 Containerlab 自动测试模块
-)
+BASE_DIR = Path(__file__).resolve().parent
+CLAB_TOPOLOGY = BASE_DIR / "mesh.clab.yml"
+
+# Containerlab 各容器必须具备的数据接口及对应地址。
+CLAB_REQUIREMENTS = {
+    "clab-mesh-test_a": {"eth1": "172.25.0.2/16", "eth2": "172.27.0.2/16"},
+    "clab-mesh-test_b": {"eth1": "172.25.0.3/16", "eth2": "172.26.0.2/16"},
+    "clab-mesh-test_c": {"eth1": "172.26.0.3/16", "eth2": "172.27.0.3/16"},
+}
+
+
+def _menu(title, items):
+    """显示菜单；title 为标题，items 为 (编号, 名称) 序列，返回用户输入。"""
+    print(f"\n{'=' * 46}\n{title}\n{'-' * 46}")
+    for key, label in items:
+        print(f"{key}. {label}")
+    print("0. 返回上一级")
+    return input("请输入选项编号：").strip()
+
+
+def _number(prompt, cast, minimum=0, maximum=None):
+    """读取数值；cast 指定类型，minimum 和 maximum 限制输入范围。"""
+    while True:
+        raw = input(prompt).strip() or "0"
+        try:
+            value = cast(raw)
+        except ValueError:
+            print("[输入无效] 请输入数字。")
+            continue
+        if value < minimum or (maximum is not None and value > maximum):
+            scope = f"{minimum} 至 {maximum}" if maximum is not None else f"不小于 {minimum}"
+            print(f"[输入无效] 数值范围应为{scope}。")
+            continue
+        return value
 
 
 def input_damage(link_name):
-    """获取并校验用户输入的链路损伤参数"""
-    print(f"\n{'='*27}\n设置链路损伤\n当前链路: {link_name}\n{'='*27}")
-    
-    try:
-        delay = int(input("delay(ms): ") or "0")
-        jitter = int(input("jitter(ms): ") or "0")
-        loss = float(input("loss(%): ") or "0.0")
-        bandwidth = int(input("bandwidth(Mbps): ") or "0")
-    except ValueError:
-        print("\n [警告] 输入格式错误，将默认使用全 0 参数。")
-        return 0, 0, 0.0, 0
-        
+    """读取 link_name 链路的损伤参数，返回时延、抖动、丢包率和带宽。"""
+    print(f"\n[参数配置] {link_name}")
+    delay = _number("固定时延 delay (ms)：", int)
+    jitter = _number("时延抖动 jitter (ms)：", int)
+    loss = _number("随机丢包率 loss (%)：", float, maximum=100)
+    bandwidth = _number("带宽上限 bandwidth (Mbps，0 表示不限速)：", int)
+
+    # Netem 不能在没有基础时延的情况下单独设置抖动。
+    if jitter and not delay:
+        print("[参数调整] jitter 需要非零 delay，本次 jitter 已重置为 0。")
+        jitter = 0
     return delay, jitter, loss, bandwidth
 
 
-def _execute_and_save(target_ip, topology_type, base_data, source="test_a"):
-    """统一执行手动 Ping 和 Iperf 测试，并将数据保存"""
-    print("\n 正在执行网络测试，请稍候...")
-    avg_rtt, real_loss = ping_test(target_ip, source=source)
-    throughput = iperf_test(target_ip, source=source)
-    
-    base_data.extend([avg_rtt, real_loss, throughput])
-    save_result(base_data, topology_type)
-    
-    print(f"\n [成功] {topology_type} 拓扑测试完成，数据已保存！")
+def _measure_and_save(target, topology, record, source, tool):
+    """从 source 测量 target，并按 topology、record 和 tool 保存有效结果。"""
+    print(f"\n[处理中] 开始端到端测量：{source} -> {target}")
+    rtt, loss = ping_test(target, source=source)
+    if loss >= 100:
+        print("[未保存] 目标不可达，本次测量无有效结果。")
+        return False
+
+    throughput = iperf_test(target, source=source)
+    if throughput <= 0:
+        print("[未保存] Iperf3 未返回有效吞吐量。")
+        return False
+
+    save_result([*record, rtt, loss, throughput], topology, tool)
+    print("[完成] 本次测量及数据保存成功。")
+    return True
+
+
+def _manual_link(link, topology, tool):
+    """手动测量单条链路；link 包含名称、发送端、接口、目标和存储名称。"""
+    label, sender, interface, target, storage_name = link
+    delay, jitter, loss, bandwidth = input_damage(label)
+
+    # 将损伤施加到发送端出口接口，再执行端到端测量。
+    set_damage(sender, interface, delay, jitter, loss, bandwidth)
+    _measure_and_save(
+        target,
+        topology,
+        [storage_name, delay, jitter, loss, bandwidth],
+        sender,
+        tool,
+    )
+
+
+def _link_menu(title, topology, links, tc_interfaces, auto_action, tool, comparison=False):
+    """通用链路菜单；接收链路、TC 接口、自动测试函数及绘图模式等参数。"""
+    link_count = len(links)
+    items = [(str(i), f"手动测量：{link[0]}") for i, link in enumerate(links, 1)]
+    items += [
+        (str(link_count + 1), "查看当前 TC 队列规则"),
+        (str(link_count + 2), "根据数据库生成图表"),
+        (str(link_count + 3), "执行全部参数矩阵"),
+    ]
+
+    while True:
+        choice = _menu(title, items)
+        if choice == "0":
+            return
+
+        if choice.isdigit() and 1 <= int(choice) <= link_count:
+            _manual_link(links[int(choice) - 1], topology, tool)
+        elif choice == str(link_count + 1):
+            for node, interface in tc_interfaces:
+                check_tc(node, interface)
+        elif choice == str(link_count + 2):
+            generate_plot(topology, mode="comparison" if comparison else "single")
+        elif choice == str(link_count + 3):
+            print("[处理中] 参数矩阵测试开始；仅有效结果会写入数据库。")
+            auto_action()
+            print("[完成] 参数矩阵测试结束。")
+        else:
+            print("[输入无效] 请选择菜单中列出的编号。")
 
 
 def handle_star_topology():
-    """处理星型拓扑的交互与测试逻辑"""
+    """创建 Docker 星型拓扑并进入手动、批量、TC 和绘图菜单。"""
     create_topology("star")
-    
-    while True:
-        print("\n" + "="*35)
-        print("星型拓扑链路选择\n")
-        print("1. [手动] test_a ---> test_b")
-        print("2. [手动] test_a ---> test_c")
-        print("3. 查看 tc 规则")
-        print("4. 生成关系图")
-        print("5. [自动] 执行全矩阵批量测试")
-        print("0. 返回上级菜单 (重新选择拓扑)")
-        print("="*35)
-        
-        choice = input("选择: ")
+    links = (
+        ("test_a --> test_b", "test_a", "eth0", "test_b", "test_b"),
+        ("test_a --> test_c", "test_a", "eth1", "test_c", "test_c"),
+    )
 
-        if choice == "0":
-            break
-        elif choice == "4":
-            generate_plot("star")
-        elif choice == "3":
-            check_tc("test_a", "eth0")
-            check_tc("test_a", "eth1")
-        elif choice == "5":
-            print("\n [开始] 准备开始自动执行星型拓扑全矩阵测试...")
-            archive_history_data("star")
-            run_star_auto_link("test_b", "eth0")
-            run_star_auto_link("test_c", "eth1")
-            print("\n [处理中] 正在生成星型拓扑图表...")
-            generate_plot("star")
-        elif choice in ("1", "2"):
-            interface = "eth0" if choice == "1" else "eth1"
-            target = "test_b" if choice == "1" else "test_c"
-            
-            delay, jitter, loss, bandwidth = input_damage(target)
-            set_damage("test_a", interface, delay, jitter, loss, bandwidth)
-            
-            _execute_and_save(
-                target_ip=target,
-                topology_type="star",
-                base_data=[target, delay, jitter, loss, bandwidth]
-            )
-        else:
-            print("\n [错误] 无效选项，请重新输入！")
+    # 星型批测需要分别测试 test_a 的两个出口。
+    def run_all():
+        run_star_auto_link("test_b", "eth0")
+        run_star_auto_link("test_c", "eth1")
+
+    _link_menu(
+        "原生 Docker TC / 星型拓扑",
+        "star",
+        links,
+        (("test_a", "eth0"), ("test_a", "eth1")),
+        run_all,
+        "docker_tc",
+    )
 
 
 def handle_chain_topology():
-    """处理链式拓扑的交互与测试逻辑"""
+    """创建 Docker 链式拓扑并管理端到端手动测量和批量测试。"""
     create_topology("chain")
-    
-    while True:
-        print("\n" + "="*35)
-        print("链式拓扑链路选择\n")
-        print("1. [手动] test_a ---> test_b ---> test_c")
-        print("2. 查看 tc 规则")
-        print("3. 生成关系图")
-        print("4. [自动] 执行全矩阵批量测试")
-        print("0. 返回上级菜单 (重新选择拓扑)")
-        print("="*35)
-        
-        choice = input("选择: ")
+    items = (
+        ("1", "手动测量：test_a --> test_b --> test_c"),
+        ("2", "查看当前 TC 队列规则"),
+        ("3", "根据数据库生成图表"),
+        ("4", "执行全部参数矩阵"),
+    )
 
+    while True:
+        choice = _menu("原生 Docker TC / 链式拓扑", items)
         if choice == "0":
-            break
-        elif choice == "3":
-            generate_plot("chain")
+            return
+
+        if choice == "1":
+            # 分别配置 A-B 和 B-C，再测量 A-C 端到端性能。
+            ab = input_damage("test_a --> test_b")
+            bc = input_damage("test_b --> test_c")
+            set_damage("test_a", "eth0", *ab)
+            set_damage("test_b", "eth1", *bc)
+
+            # 链式拓扑需要分别保存两段链路的损伤参数。
+            ab_record = dict(zip(("AB_delay", "AB_jitter", "AB_loss", "AB_bandwidth"), ab))
+            bc_record = dict(zip(("BC_delay", "BC_jitter", "BC_loss", "BC_bandwidth"), bc))
+            _measure_and_save(
+                "172.22.0.3",
+                "chain",
+                ["test_a-->test_b-->test_c", ab_record, bc_record],
+                "test_a",
+                "docker_tc",
+            )
         elif choice == "2":
             check_tc("test_a", "eth0")
             check_tc("test_b", "eth1")
-        elif choice == "4":
-            print("\n [开始] 准备开始自动执行链式拓扑全矩阵测试...")
-            archive_history_data("chain")
-            run_chain_auto_tests()
-            print("\n [处理中] 正在生成链式拓扑图表...")
+        elif choice == "3":
             generate_plot("chain")
-        elif choice == "1":
-            ab_delay, ab_jitter, ab_loss, ab_bandwidth = input_damage("test_a ---> test_b")
-            set_damage("test_a", "eth0", ab_delay, ab_jitter, ab_loss, ab_bandwidth)
-
-            bc_delay, bc_jitter, bc_loss, bc_bandwidth = input_damage("test_b ---> test_c")
-            set_damage("test_b", "eth1", bc_delay, bc_jitter, bc_loss, bc_bandwidth)
-
-            _execute_and_save(
-                target_ip="172.22.0.3",
-                topology_type="chain",
-                base_data=[
-                    "test_a-->test_b-->test_c",
-                    {"AB_delay": ab_delay, "AB_jitter": ab_jitter, "AB_loss": ab_loss, "AB_bandwidth": ab_bandwidth},
-                    {"BC_delay": bc_delay, "BC_jitter": bc_jitter, "BC_loss": bc_loss, "BC_bandwidth": bc_bandwidth}
-                ]
-            )
+        elif choice == "4":
+            print("[处理中] 链式参数矩阵测试开始。")
+            run_chain_auto_tests()
+            print("[完成] 链式参数矩阵测试结束。")
         else:
-            print("\n [错误] 无效选项，请重新输入！")
+            print("[输入无效] 请选择菜单中列出的编号。")
 
 
 def handle_mesh_topology():
-    """处理原生 Docker 网状拓扑的交互与测试逻辑"""
+    """创建 Docker 网状拓扑，并将链路常量转换为通用菜单格式。"""
     create_topology("mesh")
-    
-    while True:
-        print("\n" + "="*35)
-        print("原生 Docker 网状拓扑链路选择\n")
-        print("1. [手动] test_a <---> test_b")
-        print("2. [手动] test_b <---> test_c")
-        print("3. [手动] test_a <---> test_c")
-        print("4. 查看 tc 规则")
-        print("5. 生成关系图")
-        print("6. [自动] 执行全矩阵批量测试")
-        print("0. 返回上级菜单")
-        print("="*35)
-        
-        choice = input("选择: ")
-
-        if choice == "0":
-            break
-        elif choice == "5":
-            generate_plot("mesh")
-        elif choice == "4":
-            check_tc("test_a", "eth0")
-            check_tc("test_a", "eth1")
-            check_tc("test_b", "eth1")
-        elif choice == "6":
-            print("\n [开始] 准备开始自动执行网状拓扑全矩阵测试...")
-            archive_history_data("mesh")
-            run_mesh_auto_tests()
-            print("\n [处理中] 正在生成网状拓扑图表...")
-            generate_plot("mesh")
-        elif choice in ("1", "2", "3"):
-            link_map = {
-                "1": ("test_a", "eth0", "172.25.0.3", "test_a<-->test_b"),
-                "2": ("test_b", "eth1", "172.26.0.3", "test_b<-->test_c"),
-                "3": ("test_a", "eth1", "172.27.0.3", "test_a<-->test_c"),
-            }
-            sender, interface, target, link_name = link_map[choice]
-            
-            delay, jitter, loss, bandwidth = input_damage(link_name)
-            set_damage(sender, interface, delay, jitter, loss, bandwidth)
-            
-            _execute_and_save(
-                target_ip=target,
-                topology_type="mesh",
-                base_data=[link_name, delay, jitter, loss, bandwidth],
-                source=sender
-            )
-        else:
-            print("\n [错误] 无效选项，请重新输入！")
-
-
-def _ensure_clab_deployed(topo_file="mesh.clab.yml"):
-    """检查并自动拉起 Containerlab 拓扑"""
-    print(f"\n [检测中] 正在检查 Containerlab 环境 ({topo_file}) 状态...")
-    
-    check = subprocess.run(
-        ["sudo", "clab", "inspect", "-t", topo_file], 
-        stdout=subprocess.DEVNULL, 
-        stderr=subprocess.DEVNULL
+    links = tuple((*item, item[0]) for item in DOCKER_MESH_LINKS)
+    _link_menu(
+        "原生 Docker TC / 网状拓扑",
+        "mesh",
+        links,
+        (("test_a", "eth0"), ("test_b", "eth1"), ("test_a", "eth1")),
+        run_mesh_auto_tests,
+        "docker_tc",
     )
-    
-    if check.returncode == 0:
-        print(" [正常] 已检测到 Containerlab 环境正在后台运行。")
+
+
+def _clab_status():
+    """检查 Containerlab 容器、接口地址和三条数据链路，返回错误列表。"""
+    errors = []
+
+    # 首先检查每个容器是否运行，以及接口地址是否符合拓扑定义。
+    for container, interfaces in CLAB_REQUIREMENTS.items():
+        running = subprocess.run(
+            ["docker", "inspect", "-f", "{{.State.Running}}", container],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        if running.returncode or running.stdout.strip() != "true":
+            errors.append(f"{container} 未运行")
+            continue
+
+        for interface, address in interfaces.items():
+            state = subprocess.run(
+                ["docker", "exec", container, "ip", "-o", "-4", "addr", "show", "dev", interface],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+            if state.returncode or address not in state.stdout:
+                errors.append(f"{container}:{interface} 缺少地址 {address}")
+
+    # 容器和接口正常后，再检查 A-B、B-C、A-C 三条数据链路。
+    if not errors:
+        for source, target, label in (
+            ("clab-mesh-test_a", "172.25.0.3", "A-B"),
+            ("clab-mesh-test_b", "172.26.0.3", "B-C"),
+            ("clab-mesh-test_a", "172.27.0.3", "A-C"),
+        ):
+            ping = subprocess.run(
+                ["docker", "exec", source, "ping", "-n", "-c", "1", "-W", "2", target],
+                check=False,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+            if ping.returncode:
+                errors.append(f"数据链路 {label} 不可达")
+
+    return errors
+
+
+def _ensure_clab_deployed():
+    """校验 Containerlab；环境异常时根据 CLAB_TOPOLOGY 清理并重新部署。"""
+    errors = _clab_status()
+    if not errors:
+        print("[状态] Containerlab 容器与数据接口完整。")
         return True
-    else:
-        print(f" [启动中] 环境未运行，系统正在自动部署 (执行: sudo clab deploy -t {topo_file})...")
-        print(" " + "-"*40)
-        deploy = subprocess.run(["sudo", "clab", "deploy", "-t", topo_file])
-        print(" " + "-"*40)
-        
-        if deploy.returncode == 0:
-            print("\n [成功] Containerlab 环境自动拉起完成！")
-            return True
-        else:
-            print("\n [错误] 自动部署失败，请检查 Docker 状态或 yml 配置文件。")
-            return False
+
+    print("[处理中] Containerlab 环境不完整，准备重新部署：")
+    for error in errors:
+        print(f"  - {error}")
+
+    # 销毁残留环境和同名容器，避免旧接口影响重新部署。
+    topology = str(CLAB_TOPOLOGY)
+    subprocess.run(["sudo", "clab", "destroy", "-t", topology, "--cleanup"], check=False)
+    subprocess.run(
+        ["docker", "rm", "-f", *CLAB_REQUIREMENTS],
+        check=False,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+
+    if subprocess.run(["sudo", "clab", "deploy", "-t", topology], check=False).returncode:
+        print("[失败] Containerlab 部署命令执行失败。")
+        return False
+
+    # 等待接口初始化完成，然后重新执行完整状态检查。
+    time.sleep(2)
+    errors = _clab_status()
+    if errors:
+        print("[失败] 部署完成但环境校验未通过：")
+        for error in errors:
+            print(f"  - {error}")
+        return False
+
+    print("[完成] Containerlab 环境部署并校验成功。")
+    return True
 
 
 def handle_clab_mesh_topology():
-    """处理 Containerlab 网状拓扑的交互与测试逻辑（含自动检测拉起）"""
-    if not _ensure_clab_deployed("mesh.clab.yml"):
-        print(" [返回] 环境未就绪，即将返回主菜单。")
+    """准备 Containerlab 环境并进入网状拓扑操作菜单。"""
+    if not _ensure_clab_deployed():
         return
-        
-    while True:
-        print("\n" + "="*35)
-        print("Containerlab 网状拓扑链路选择\n")
-        print("1. [手动] clab_mesh_a <---> b (依赖eth1)")
-        print("2. [手动] clab_mesh_b <---> c (依赖eth2)")
-        print("3. [手动] clab_mesh_a <---> c (依赖eth2)")
-        print("4. 查看 tc 规则")
-        print("5. 生成横向对比关系图")
-        print("6. [自动] 执行全矩阵批量测试 (生成对比数据)")
-        print("0. 返回上级菜单")
-        print("="*35)
-        
-        choice = input("选择: ")
 
-        if choice == "0":
-            break
-        elif choice == "5":
-            generate_plot("mesh")
-        elif choice == "4":
-            check_tc("test_a", "eth1")
-            check_tc("test_b", "eth2")
-            check_tc("test_a", "eth2")
-        elif choice == "6":
-            print("\n [开始] 准备开始自动执行 Containerlab 网状拓扑全矩阵测试...")
-            run_clab_mesh_auto_tests()
-            print("\n [处理中] 正在生成包含 Clab 对比数据的网状拓扑图表...")
-            generate_plot("mesh")
-        elif choice in ("1", "2", "3"):
-            link_map = {
-                "1": ("test_a", "eth1", "172.25.0.3", "clab_mesh_a<-->b"),
-                "2": ("test_b", "eth2", "172.26.0.3", "clab_mesh_b<-->c"),
-                "3": ("test_a", "eth2", "172.27.0.3", "clab_mesh_a<-->c"),
-            }
-            sender, interface, target, link_name = link_map[choice]
-            
-            delay, jitter, loss, bandwidth = input_damage(link_name)
-            set_damage(sender, interface, delay, jitter, loss, bandwidth)
-            
-            _execute_and_save(
-                target_ip=target,
-                topology_type="mesh",
-                base_data=[link_name, delay, jitter, loss, bandwidth],
-                source=sender
-            )
-        else:
-            print("\n [错误] 无效选项，请重新输入！")
+    links = tuple((*item, item[0]) for item in CLAB_MESH_LINKS)
+    _link_menu(
+        "Containerlab / 网状拓扑",
+        "mesh",
+        links,
+        (
+            ("clab-mesh-test_a", "eth1"),
+            ("clab-mesh-test_b", "eth2"),
+            ("clab-mesh-test_a", "eth2"),
+        ),
+        run_clab_mesh_auto_tests,
+        "containerlab",
+        comparison=True,
+    )
 
 
 def handle_docker_tc_menu():
-    """二级菜单：原生 Docker TC 拓扑选择"""
-    while True:
-        print("\n" + "="*35)
-        print("原生 Docker TC 仿真 - 拓扑选择\n")
-        print("1. 星型拓扑 (Star)")
-        print("2. 链式拓扑 (Chain)")
-        print("3. 网状拓扑 (Mesh)")
-        print("0. 返回主菜单")
-        print("="*35)
-        
-        topo = input("选择: ")
+    """显示 Docker TC 拓扑菜单，并调用选中拓扑对应的处理函数。"""
+    handlers = {
+        "1": handle_star_topology,
+        "2": handle_chain_topology,
+        "3": handle_mesh_topology,
+    }
+    items = (("1", "星型拓扑"), ("2", "链式拓扑"), ("3", "网状拓扑"))
 
-        if topo == "0":
-            break
-        elif topo == "1":
-            handle_star_topology()
-        elif topo == "2":
-            handle_chain_topology()
-        elif topo == "3":
-            handle_mesh_topology()
+    while True:
+        choice = _menu("原生 Docker TC / 拓扑选择", items)
+        if choice == "0":
+            return
+
+        handler = handlers.get(choice)
+        if handler:
+            handler()
         else:
-            print("\n [错误] 无效选项，请重新输入！")
+            print("[输入无效] 请选择菜单中列出的编号。")
 
 
 def run_interactive_menu():
-    """主菜单入口（顶层工具选择）"""
-    while True:
-        print("\n" + "="*35)
-        print("通信系统仿真平台 - 请先选择仿真工具\n")
-        print("1. 原生 Docker TC 仿真工具 (支持星型/链式/网状)")
-        print("2. Containerlab 仿真工具 (仅支持网状拓扑评估)")
-        print("0. 退出程序")
-        print("="*35)
-        
-        tool = input("选择: ")
+    """程序主交互入口；调度 Docker TC 或 Containerlab 仿真模块。"""
+    handlers = {
+        "1": handle_docker_tc_menu,
+        "2": handle_clab_mesh_topology,
+    }
+    items = (
+        ("1", "原生 Docker TC 仿真"),
+        ("2", "Containerlab 网状拓扑仿真"),
+    )
 
-        if tool == "0":
-            print("退出程序...")
-            break
-        elif tool == "1":
-            handle_docker_tc_menu()
-        elif tool == "2":
-            handle_clab_mesh_topology()
+    while True:
+        choice = _menu("通信系统网络仿真平台", items)
+        if choice == "0":
+            print("[完成] 程序已退出。")
+            return
+
+        handler = handlers.get(choice)
+        if handler:
+            handler()
         else:
-            print("\n [错误] 无效选项，请重新输入！")
+            print("[输入无效] 请选择菜单中列出的编号。")

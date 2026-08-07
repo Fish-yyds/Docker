@@ -1,213 +1,291 @@
-"""
-网络拓扑构建与初始化模块 (终极优化版)
-"""
+"""原生 Docker 星型、链式和网状拓扑管理。"""
+
+import shlex
 import subprocess
-import os
 import time
+from pathlib import Path
+
 import matplotlib.pyplot as plt
 
-# ==================================
-# 基础工具函数
-# ==================================
+BASE_DIR = Path(__file__).resolve().parent
+IMAGE = "ubuntu_net_tools:22.04"
 
-def run(cmd, check=True):
-    """
-    执行 Shell 命令，并在关键步骤失败时立即给出真实错误。
-    """
-    result = subprocess.run(
-        cmd,
-        shell=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True
-    )
-    if check and result.returncode != 0:
+# 原生 Docker 仿真实验使用的容器和网络名称。
+NATIVE_CONTAINERS = ("test_a", "test_b", "test_c")
+NATIVE_NETWORKS = (
+    "net_b", "net_c", "net_ab", "net_bc",
+    "net_mesh_ab", "net_mesh_bc", "net_mesh_ac",
+)
+
+# 链式跨网桥转发要求宿主机上的三个参数均为 0。
+BRIDGE_SETTINGS = (
+    "net.bridge.bridge-nf-call-iptables",
+    "net.bridge.bridge-nf-call-ip6tables",
+    "net.bridge.bridge-nf-call-arptables",
+)
+
+# 每项依次包含节点坐标、链路关系和拓扑图标题。
+DRAW_SPECS = {
+    "star": (
+        {"test_b": (-2, 0), "test_a": (0, 0), "test_c": (2, 0)},
+        (("test_a", "test_b"), ("test_a", "test_c")),
+        "Star Topology",
+    ),
+    "chain": (
+        {"test_a": (-2, 0), "test_b": (0, 0), "test_c": (2, 0)},
+        (("test_a", "test_b"), ("test_b", "test_c")),
+        "Chain Topology",
+    ),
+    "mesh": (
+        {"test_a": (-1.5, 1), "test_b": (1.5, 1), "test_c": (0, -1)},
+        (("test_a", "test_b"), ("test_b", "test_c"), ("test_a", "test_c")),
+        "Full-Mesh Topology",
+    ),
+}
+
+
+def _run(args, check=True):
+    """执行 args 命令；check 为 True 时，命令失败将抛出异常。"""
+    result = subprocess.run(args, check=False, capture_output=True, text=True)
+    if check and result.returncode:
         detail = result.stderr.strip() or result.stdout.strip() or "无错误输出"
-        raise RuntimeError(f"命令执行失败 (exit={result.returncode}): {cmd}\n{detail}")
+        raise RuntimeError(f"命令执行失败：{shlex.join(args)}\n{detail}")
     return result
 
 
-def install_tools():
-    """
-    【极速优化】由于全面启用了 ubuntu_net_tools:22.04 本地预装镜像，
-    这里不再需要执行缓慢且容易卡死的 apt-get 动态下载过程。
-    """
-    print("\n[成功] 已检测到使用本地预装工具镜像，跳过动态下载，极速启动！")
+def _docker(*args, check=True):
+    """执行 Docker 命令；args 为 Docker 参数，check 控制失败检查。"""
+    return _run(["docker", *map(str, args)], check=check)
 
 
-def generate_topology_image(mode):
-    """
-    使用 Matplotlib 绘制当前网络拓扑结构的示意图
-    """
-    if not os.path.exists("images"):
-        os.mkdir("images")
+def _run_container(name, network, ip=None, forward=False):
+    """创建容器；name、network 和 ip 指定网络配置，forward 控制 IPv4 转发。"""
+    args = ["run", "-dit", "--name", name, "--network", network]
+    if ip:
+        args += ["--ip", ip]
 
-    plt.figure(figsize=(8, 6))
+    # NET_ADMIN 权限用于配置路由、iptables 和 TC。
+    args += ["--cap-add", "NET_ADMIN"]
+    if forward:
+        args += ["--sysctl", "net.ipv4.ip_forward=1"]
 
-    # 动态配置不同拓扑的节点坐标与连线
-    if mode == "star":
-        nodes = {"test_b": (-2, 0), "test_a": (0, 0), "test_c": (2, 0)}
-        links = [("test_a", "test_b"), ("test_a", "test_c")]
-        title = "Star Topology"
-        filename = "images/star_topology.png"
-    elif mode == "chain":
-        nodes = {"test_a": (-2, 0), "test_b": (0, 0), "test_c": (2, 0)}
-        links = [("test_a", "test_b"), ("test_b", "test_c")]
-        title = "Chain Topology"
-        filename = "images/chain_topology.png"
-    else:  # 网状拓扑 (Mesh) 绘图逻辑
-        nodes = {"test_a": (-1.5, 1), "test_b": (1.5, 1), "test_c": (0, -1)}
-        links = [("test_a", "test_b"), ("test_b", "test_c"), ("test_a", "test_c")]
-        title = "Full-Mesh Topology"
-        filename = "images/mesh_topology.png"
-
-    # 绘制连线
-    for a, b in links:
-        x1, y1 = nodes[a]
-        x2, y2 = nodes[b]
-        plt.plot([x1, x2], [y1, y2], linewidth=2, color='#0072B2')
-
-    # 绘制节点与文字标签
-    for name, (x, y) in nodes.items():
-        plt.scatter(x, y, s=800, color='#E69F00', zorder=5)
-        plt.text(x, y - 0.2, name, ha="center", va="center", fontsize=12, fontweight='bold')
-
-    plt.title(title, fontsize=16)
-    plt.axis("off")
-    plt.savefig(filename, dpi=220, bbox_inches="tight")
-    plt.close()
-    
-    print(f"[成功] 拓扑图已生成: {filename}")
+    _docker(*args, IMAGE)
 
 
-# ==================================
-# 拓扑构建核心逻辑
-# ==================================
+def _clear_qdiscs(items):
+    """删除 items 中各容器接口的根 TC 规则；接口无规则时忽略错误。"""
+    for node, interface in items:
+        _docker(
+            "exec", node, "tc", "qdisc", "del",
+            "dev", interface, "root", check=False,
+        )
+
+
+def _verify_bridge_configuration():
+    """检查链式转发依赖的宿主机 bridge netfilter 持久化配置。"""
+    invalid = []
+
+    for setting in BRIDGE_SETTINGS:
+        result = _run(["sysctl", "-n", setting], check=False)
+        value = result.stdout.strip() if not result.returncode else "无法读取"
+        if value != "0":
+            invalid.append(f"{setting}={value}")
+
+    if invalid:
+        raise RuntimeError(
+            "宿主机 bridge netfilter 配置未生效：\n  - "
+            + "\n  - ".join(invalid)
+            + "\n请执行：sudo systemctl restart network-sim-netfilter.service"
+        )
+
+    print("[状态] 宿主机 bridge netfilter 配置有效。")
+
 
 def _create_star():
-    """[内部函数] 构建星型拓扑网络结构"""
-    run("docker network create net_b")
-    run("docker network create net_c")
+    """创建 test_a 分别连接 test_b 和 test_c 的星型拓扑。"""
+    _docker("network", "create", "net_b")
+    _docker("network", "create", "net_c")
+    _run_container("test_a", "net_b")
+    _run_container("test_b", "net_b")
+    _run_container("test_c", "net_c")
 
-    for name, net in [("test_a", "net_b"), ("test_b", "net_b"), ("test_c", "net_c")]:
-        run(f"docker run -dit --name {name} --network {net} --cap-add NET_ADMIN ubuntu_net_tools:22.04")
-
-    run("docker network connect net_c test_a")
+    # test_a 同时加入两个网络，作为星型拓扑中心节点。
+    _docker("network", "connect", "net_c", "test_a")
 
 
 def _create_chain():
-    """[内部函数] 构建链式拓扑网络结构并配置静态路由"""
-    run("docker network create --driver bridge --subnet=172.21.0.0/16 net_ab")
-    run("docker network create --driver bridge --subnet=172.22.0.0/16 net_bc")
-
-    run("docker run -dit --name test_a --network net_ab --ip 172.21.0.2 --cap-add NET_ADMIN ubuntu_net_tools:22.04")
-    run(
-        "docker run -dit --name test_b --network net_ab --ip 172.21.0.3 "
-        "--cap-add NET_ADMIN --sysctl net.ipv4.ip_forward=1 ubuntu_net_tools:22.04"
+    """创建 A-B-C 链式拓扑，并配置转发、防火墙及双向静态路由。"""
+    _docker(
+        "network", "create", "--driver", "bridge",
+        "--subnet", "172.21.0.0/16", "net_ab",
     )
-    run("docker run -dit --name test_c --network net_bc --ip 172.22.0.3 --cap-add NET_ADMIN ubuntu_net_tools:22.04")
+    _docker(
+        "network", "create", "--driver", "bridge",
+        "--subnet", "172.22.0.0/16", "net_bc",
+    )
 
-    run("docker network connect --ip 172.22.0.2 net_bc test_b")
-    
-    run('docker exec test_b bash -c "iptables -P FORWARD ACCEPT && iptables -F FORWARD"')
+    # test_b 连接两个子网并承担中间路由转发。
+    _run_container("test_a", "net_ab", "172.21.0.2")
+    _run_container("test_b", "net_ab", "172.21.0.3", forward=True)
+    _run_container("test_c", "net_bc", "172.22.0.3")
+    _docker("network", "connect", "--ip", "172.22.0.2", "net_bc", "test_b")
 
-    run("""
-        docker exec test_a tc qdisc del dev eth0 root || true
-        docker exec test_b tc qdisc del dev eth0 root || true
-        docker exec test_b tc qdisc del dev eth1 root || true
-        docker exec test_c tc qdisc del dev eth0 root || true
-    """)
+    # 放行 test_b 的转发流量并清除可能残留的 TC 规则。
+    _docker(
+        "exec", "test_b", "sh", "-c",
+        "iptables -P FORWARD ACCEPT && iptables -F FORWARD",
+    )
+    _clear_qdiscs(
+        (
+            ("test_a", "eth0"),
+            ("test_b", "eth0"),
+            ("test_b", "eth1"),
+            ("test_c", "eth0"),
+        )
+    )
 
-    run('docker exec test_a ip route replace 172.22.0.0/16 via 172.21.0.3')
-    run('docker exec test_c ip route replace 172.21.0.0/16 via 172.22.0.2')
+    # 为 test_a 配置正向路由，为 test_c 配置回程路由。
+    _docker(
+        "exec", "test_a", "ip", "route", "replace",
+        "172.22.0.0/16", "via", "172.21.0.3",
+    )
+    _docker(
+        "exec", "test_c", "ip", "route", "replace",
+        "172.21.0.0/16", "via", "172.22.0.2",
+    )
 
+    _verify_bridge_configuration()
     _verify_chain_connectivity()
 
 
 def _verify_chain_connectivity():
-    """在进入测量菜单前验证转发、路由和端到端连通性。"""
-    checks = [
-        ("test_b IPv4 转发", "docker exec test_b sysctl -n net.ipv4.ip_forward", "1"),
-        ("test_a 静态路由", "docker exec test_a ip route get 172.22.0.3", "via 172.21.0.3"),
-        ("test_c 回程路由", "docker exec test_c ip route get 172.21.0.2", "via 172.22.0.2"),
-    ]
-    for label, command, expected in checks:
-        result = run(command)
-        if expected not in result.stdout:
-            raise RuntimeError(f"{label}校验失败，实际输出:\n{result.stdout.strip()}")
+    """检查 test_b 转发、双向路由和 test_a 到 test_c 的连通性。"""
+    # 每项依次为检查名称、执行命令和预期输出内容。
+    checks = (
+        (
+            "test_b IPv4 转发",
+            ["docker", "exec", "test_b", "sysctl", "-n", "net.ipv4.ip_forward"],
+            "1",
+        ),
+        (
+            "test_a 静态路由",
+            ["docker", "exec", "test_a", "ip", "route", "get", "172.22.0.3"],
+            "via 172.21.0.3",
+        ),
+        (
+            "test_c 回程路由",
+            ["docker", "exec", "test_c", "ip", "route", "get", "172.21.0.2"],
+            "via 172.22.0.2",
+        ),
+    )
 
-    print("\n[处理中] 正在验证链式端到端连通性...")
-    ping = run("docker exec test_a ping -n -c 3 -W 2 172.22.0.3", check=False)
-    if ping.returncode == 0:
-        print("[成功] 链式端到端连通性正常。")
+    for label, command, expected in checks:
+        output = _run(command).stdout
+        if expected not in output:
+            raise RuntimeError(f"链式拓扑检查失败：{label}\n{output.strip()}")
+
+    # 从 test_a Ping test_c，验证跨 test_b 的端到端通信。
+    ping = _docker(
+        "exec", "test_a", "ping", "-n",
+        "-c", "3", "-W", "2", "172.22.0.3",
+        check=False,
+    )
+    if not ping.returncode:
+        print("[完成] 链式拓扑端到端连通性验证通过。")
         return
 
-    diagnostic_commands = [
-        "docker exec test_a ip -br addr",
-        "docker exec test_a ip route",
-        "docker exec test_b ip -br addr",
-        "docker exec test_b ip route",
-        "docker exec test_b iptables -nvL FORWARD",
-        "docker exec test_c ip -br addr",
-        "docker exec test_c ip route",
-    ]
+    # 失败时收集关键接口、路由和防火墙信息。
+    commands = (
+        ["docker", "exec", "test_a", "ip", "route"],
+        ["docker", "exec", "test_b", "ip", "-br", "addr"],
+        ["docker", "exec", "test_b", "ip", "route"],
+        ["docker", "exec", "test_b", "iptables", "-nvL", "FORWARD"],
+        ["docker", "exec", "test_c", "ip", "route"],
+    )
     diagnostics = []
-    for command in diagnostic_commands:
-        result = run(command, check=False)
-        output = result.stdout.strip() or result.stderr.strip() or "无输出"
-        diagnostics.append(f"$ {command}\n{output}")
-    ping_output = ping.stdout.strip() or ping.stderr.strip() or "无输出"
+
+    for command in commands:
+        result = _run(command, check=False)
+        output = result.stdout.strip() or result.stderr.strip()
+        diagnostics.append(f"$ {shlex.join(command)}\n{output}")
+
     raise RuntimeError(
-        "链式拓扑预检失败，已停止后续 Ping/Iperf 测量。\n"
-        f"Ping 输出:\n{ping_output}\n\n" + "\n\n".join(diagnostics)
+        "链式拓扑端到端连通性验证失败。\n"
+        f"{ping.stdout.strip()}\n\n" + "\n\n".join(diagnostics)
     )
 
 
 def _create_mesh():
-    """[内部函数] 构建全网状拓扑结构 (Mesh: A-B, B-C, A-C 两两直连)"""
-    run("docker network create --driver bridge --subnet=172.25.0.0/16 net_mesh_ab")
-    run("docker network create --driver bridge --subnet=172.26.0.0/16 net_mesh_bc")
-    run("docker network create --driver bridge --subnet=172.27.0.0/16 net_mesh_ac")
+    """创建 A-B、B-C 和 A-C 三条独立网络组成的全网状拓扑。"""
+    networks = (
+        ("net_mesh_ab", "172.25.0.0/16"),
+        ("net_mesh_bc", "172.26.0.0/16"),
+        ("net_mesh_ac", "172.27.0.0/16"),
+    )
+    for name, subnet in networks:
+        _docker(
+            "network", "create", "--driver", "bridge",
+            "--subnet", subnet, name,
+        )
 
-    run("docker run -dit --name test_a --network net_mesh_ab --ip 172.25.0.2 --cap-add NET_ADMIN ubuntu_net_tools:22.04")
-    run("docker run -dit --name test_b --network net_mesh_ab --ip 172.25.0.3 --cap-add NET_ADMIN ubuntu_net_tools:22.04")
-    run("docker run -dit --name test_c --network net_mesh_bc --ip 172.26.0.3 --cap-add NET_ADMIN ubuntu_net_tools:22.04")
+    # 首先创建每个容器，再接入对应的第二条链路。
+    _run_container("test_a", "net_mesh_ab", "172.25.0.2")
+    _run_container("test_b", "net_mesh_ab", "172.25.0.3")
+    _run_container("test_c", "net_mesh_bc", "172.26.0.3")
+    _docker("network", "connect", "--ip", "172.27.0.2", "net_mesh_ac", "test_a")
+    _docker("network", "connect", "--ip", "172.26.0.2", "net_mesh_bc", "test_b")
+    _docker("network", "connect", "--ip", "172.27.0.3", "net_mesh_ac", "test_c")
 
-    run("docker network connect --ip 172.27.0.2 net_mesh_ac test_a")
-    run("docker network connect --ip 172.26.0.2 net_mesh_bc test_b")
-    run("docker network connect --ip 172.27.0.3 net_mesh_ac test_c")
-    run("""
-        docker exec test_a tc qdisc del dev eth0 root || true
-        docker exec test_a tc qdisc del dev eth1 root || true
-        docker exec test_b tc qdisc del dev eth0 root || true
-        docker exec test_b tc qdisc del dev eth1 root || true
-        docker exec test_c tc qdisc del dev eth0 root || true
-        docker exec test_c tc qdisc del dev eth1 root || true
-    """)
+    # 确保新拓扑不继承容器接口上的旧 TC 规则。
+    _clear_qdiscs(
+        [(node, interface) for node in NATIVE_CONTAINERS for interface in ("eth0", "eth1")]
+    )
 
-    print("\n[成功] 网状拓扑 (Full-Mesh) 环境构建完成！")
+
+def generate_topology_image(topology_type):
+    """根据 DRAW_SPECS 绘制 topology_type 拓扑图，不参与网络配置。"""
+    nodes, links, title = DRAW_SPECS[topology_type]
+    output = BASE_DIR / "images" / f"{topology_type}_topology.png"
+    output.parent.mkdir(parents=True, exist_ok=True)
+    figure, axis = plt.subplots(figsize=(8, 6))
+
+    # 先绘制节点之间的链路，再绘制节点及名称。
+    for left, right in links:
+        axis.plot(
+            [nodes[left][0], nodes[right][0]],
+            [nodes[left][1], nodes[right][1]],
+            linewidth=2,
+            color="#0072B2",
+        )
+
+    for name, (x, y) in nodes.items():
+        axis.scatter(x, y, s=800, color="#E69F00", zorder=5)
+        axis.text(x, y - 0.2, name, ha="center", va="center", fontweight="bold")
+
+    axis.set_title(title)
+    axis.axis("off")
+    figure.savefig(output, dpi=220, bbox_inches="tight")
+    plt.close(figure)
+    print(f"[完成] 拓扑图已生成：{output}")
 
 
 def create_topology(topology_type):
-    """入口函数：清理旧环境，创建指定拓扑，安装环境依赖并绘图"""
-    print(f"\n[处理中] 准备构建 {topology_type.upper()} 拓扑环境...")
+    """清理旧环境并创建 topology_type，可选值为 star、chain 或 mesh。"""
+    builders = {
+        "star": _create_star,
+        "chain": _create_chain,
+        "mesh": _create_mesh,
+    }
+    if topology_type not in builders:
+        raise ValueError(f"不支持的拓扑类型：{topology_type}")
 
-    run("docker rm -f test_a test_b test_c || true")
-    run("docker network rm net_b net_c net_ab net_bc net_mesh_ab net_mesh_bc net_mesh_ac || true")
+    print(f"\n[处理中] 正在创建 {topology_type.upper()} 拓扑...")
 
-    if topology_type == "star":
-        _create_star()
-    elif topology_type == "chain":
-        _create_chain()
-    elif topology_type == "mesh":
-        _create_mesh()
-    else:
-        print("[错误] 未知拓扑，构建失败")
-        return
+    # 清理全部原生实验容器和网络，避免拓扑之间相互影响。
+    _docker("rm", "-f", *NATIVE_CONTAINERS, check=False)
+    _docker("network", "rm", *NATIVE_NETWORKS, check=False)
 
-    print("[处理中] 等待网络初始化...")
-    time.sleep(3)
-
-    install_tools()
+    builders[topology_type]()
+    time.sleep(1)
     generate_topology_image(topology_type)
-
+    print(f"[完成] {topology_type.upper()} 拓扑已就绪。")

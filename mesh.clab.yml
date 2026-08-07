@@ -1,40 +1,56 @@
+# Containerlab 实验名称；容器名称将生成 clab-mesh-test_a 等格式。
 name: mesh
-prefix: "" 
 
+# Containerlab 管理网络，仅用于容器管理，不参与链路性能测试。
 mgmt:
   network: clab_mgmt
   ipv4-subnet: 172.30.30.0/24
 
 topology:
   nodes:
+    # 节点 A：通过 eth1 连接 B，通过 eth2 连接 C。
     test_a:
       kind: linux
       image: ubuntu_net_tools:22.04
       exec:
-        - ip addr add 172.25.0.2/16 dev eth1
-        - ip link set dev eth1 mtu 1500
-        - ip addr add 172.27.0.2/16 dev eth2
-        - ip link set dev eth2 mtu 1500
-    
+        - ip link set eth1 up
+        - ip addr replace 172.25.0.2/16 dev eth1
+        - ip link set eth2 up
+        - ip addr replace 172.27.0.2/16 dev eth2
+
+    # 节点 B：通过 eth1 连接 A，通过 eth2 连接 C。
     test_b:
       kind: linux
       image: ubuntu_net_tools:22.04
       exec:
-        - ip addr add 172.25.0.3/16 dev eth1
-        - ip link set dev eth1 mtu 1500
-        - ip addr add 172.26.0.2/16 dev eth2
-        - ip link set dev eth2 mtu 1500
+        - ip link set eth1 up
+        - ip addr replace 172.25.0.3/16 dev eth1
+        - ip link set eth2 up
+        - ip addr replace 172.26.0.2/16 dev eth2
 
+    # 节点 C：通过 eth1 连接 B，通过 eth2 连接 A。
     test_c:
       kind: linux
       image: ubuntu_net_tools:22.04
       exec:
-        - ip addr add 172.26.0.3/16 dev eth1
-        - ip link set dev eth1 mtu 1500
-        - ip addr add 172.27.0.3/16 dev eth2
-        - ip link set dev eth2 mtu 1500
+        - ip link set eth1 up
+        - ip addr replace 172.26.0.3/16 dev eth1
+        - ip link set eth2 up
+        - ip addr replace 172.27.0.3/16 dev eth2
 
+  # 三条点到点链路组成全网状拓扑。
   links:
-    - endpoints: ["test_a:eth1", "test_b:eth1"]
-    - endpoints: ["test_b:eth2", "test_c:eth1"]
-    - endpoints: ["test_a:eth2", "test_c:eth2"]
+    # A-B：172.25.0.0/16
+    - endpoints:
+        - test_a:eth1
+        - test_b:eth1
+
+    # B-C：172.26.0.0/16
+    - endpoints:
+        - test_b:eth2
+        - test_c:eth1
+
+    # A-C：172.27.0.0/16
+    - endpoints:
+        - test_a:eth2
+        - test_c:eth2

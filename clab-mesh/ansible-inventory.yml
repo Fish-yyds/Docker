@@ -7,9 +7,9 @@ all:
   children:
     linux:
       hosts:
-        test_a:
-          ansible_host: 172.30.30.2
-        test_b:
+        clab-mesh-test_a:
           ansible_host: 172.30.30.4
-        test_c:
+        clab-mesh-test_b:
           ansible_host: 172.30.30.3
+        clab-mesh-test_c:
+          ansible_host: 172.30.30.2
